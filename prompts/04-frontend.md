@@ -21,7 +21,7 @@ Contexto: **Aviso Andino**. Lee `AGENTS.md`, `docs/API.md` y `docs/RULES.md` §3
 - `VITE_API_BASE` (default `/api`). Cliente fetch tipado con los schemas zod de `@aviso/core`. Manejo de errores 400/409/422/429 con mensajes humanos.
 - Accesibilidad: labels, foco visible, contraste AA y `lang="es"`. Los colores de nivel siempre van acompañados de su texto (AMARILLO/NARANJA/ROJO).
 - Tests: Vitest + Testing Library para el formulario (validación del teléfono, consentimiento obligatorio, preview ≤160) y la página de confirmación (GET no confirma, el botón sí).
-- Build `npm run build -w apps/web` → `apps/web/dist`, desplegado por el `BucketDeployment` de CDK.
+- Build `pnpm --filter @aviso/web build` → `apps/web/dist`, desplegado por el `BucketDeployment` de CDK.
 
 ## Criterios de aceptación
 - Desde un celular real: registrarse con Telegram o SIMULATED en < 60 s, y abrir `/c/:code` de un envío y confirmar.

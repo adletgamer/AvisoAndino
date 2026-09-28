@@ -15,7 +15,7 @@ Regla: cada tarea se cierra con **tests en verde + commit**. El deploy a `prod` 
 | 0.4 | Conectar el agente: `aws --version` ≥ 2.35.0, `aws configure agent-toolkit` o el banner "Get setup prompt" de Console Home; instalar el plugin `aws-core` en Claude Code, Codex o Cursor | Humana | El agente ejecuta `sts get-caller-identity` **vía el MCP**. Captura guardada en `docs/proof/` |
 | 0.5 | Crear un **trail de CloudTrail con data events** (si no existe) para capturar el uso del MCP | Agente vía MCP | Trail activo (ver SUBMISSION.md §3) |
 | 0.6 | Crear el bot de Telegram con @BotFather y guardar el token en SSM SecureString `/aviso-andino/telegram/botToken` | Humana | `aws ssm get-parameter --with-decryption` funciona (no pegar el token en el chat del agente) |
-| 0.7 | Repo nuevo en GitHub con este kit; ejecutar `prompts/00-bootstrap-repo.md` | Claude | `npm ci && npm test` en verde |
+| 0.7 | Repo nuevo en GitHub con este kit; ejecutar `prompts/00-bootstrap-repo.md` | Claude | `pnpm install --frozen-lockfile && pnpm test` en verde |
 
 ## Martes 29-sep: D1, core + ingesta + infra mínima desplegada
 | # | Tarea | Owner | Criterio de aceptación |
@@ -34,7 +34,7 @@ Regla: cada tarea se cierra con **tests en verde + commit**. El deploy a `prod` 
 | 2.3 | API: `POST /subscribers`, `GET/POST /confirm`, webhook de Telegram | Codex | Tests de handlers en verde. Confirmación por enlace y por Telegram funcionando en prod |
 | 2.4 | Web: registro con mapa + búsqueda de colegio + página `/c/:code` (prompt 04) | Codex | En el celular: registrarse, recibir el mensaje y confirmar |
 | 2.5 | **PUBLICAR EL BORRADOR del proyecto en Builder Center** (título, pitch, imagen de arquitectura, URL pública, tags `#social-good #community`) | Humana | Post en borrador o publicado con la URL. Elimina el riesgo de última hora |
-| 2.6 | Seed de suscriptores demo (10–20 colegios rurales reales de Puno y Huancavelica, canal SIMULATED) | Codex | `npm run seed:demo` idempotente |
+| 2.6 | Seed de suscriptores demo (10–20 colegios rurales reales de Puno y Huancavelica, canal SIMULATED) | Codex | `pnpm seed:demo` idempotente |
 
 ## Jueves 1-oct: D3, dashboard, replay y hardening
 | # | Tarea | Owner | Criterio de aceptación |

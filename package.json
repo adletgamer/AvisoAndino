@@ -5,16 +5,16 @@
   "description": "Avisos oficiales de SENAMHI convertidos en SMS claros para colegios rurales del Peru",
   "license": "MIT",
   "type": "module",
+  "packageManager": "pnpm@12.6.0",
   "engines": { "node": ">=22" },
-  "workspaces": ["packages/*", "services/*", "infra", "apps/*"],
   "scripts": {
     "lint": "eslint . && tsc -b --noEmit",
     "test": "vitest run",
     "test:cov": "vitest run --coverage",
-    "synth": "npm run synth -w infra --",
-    "diff": "npm run diff -w infra --",
-    "deploy": "npm run build -w apps/web --if-present && npm run deploy -w infra --",
-    "dev": "npm run dev -w apps/web",
+    "synth": "pnpm --filter @aviso/infra synth",
+    "diff": "pnpm --filter @aviso/infra diff",
+    "deploy": "pnpm --filter @aviso/web build && pnpm --filter @aviso/infra deploy",
+    "dev": "pnpm --filter @aviso/web dev",
     "seed:demo": "tsx scripts/seed-demo.ts"
   },
   "devDependencies": {
