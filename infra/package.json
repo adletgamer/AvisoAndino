@@ -1,0 +1,21 @@
+{
+  "name": "@aviso/infra",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "synth": "cdk synth",
+    "diff": "cdk diff",
+    "deploy": "cdk deploy",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.271.0",
+    "constructs": "^10.0.0"
+  },
+  "devDependencies": {
+    "aws-cdk": "^2.1143.0",
+    "cdk-nag": "^2.0.0",
+    "tsx": "^4.0.0"
+  }
+}

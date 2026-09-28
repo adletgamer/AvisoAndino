@@ -1,0 +1,23 @@
+{
+  "name": "@aviso/svc-sender",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@aviso/core": "*",
+    "@aws-lambda-powertools/logger": "^2.35.0",
+    "@aws-lambda-powertools/metrics": "^2.35.0",
+    "@aws-sdk/client-dynamodb": "^3.1142.0",
+    "@aws-sdk/lib-dynamodb": "^3.1142.0",
+    "@aws-sdk/client-pinpoint-sms-voice-v2": "^3.1142.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.1142.0",
+    "@aws-sdk/client-ssm": "^3.1142.0",
+    "@aws-sdk/client-kms": "^3.1142.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.0"
+  }
+}

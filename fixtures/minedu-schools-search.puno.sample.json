@@ -1,0 +1,172 @@
+{
+    "displayFieldName": "CODINST",
+    "fieldAliases": {
+        "COD_MOD": "COD_MOD",
+        "CODLOCAL": "CODLOCAL",
+        "CEN_EDU": "CEN_EDU",
+        "D_NIV_MOD": "D_NIV_MOD",
+        "CEN_POB": "CEN_POB",
+        "CODCP_INEI": "CODCP_INEI",
+        "D_DPTO": "D_DPTO",
+        "D_PROV": "D_PROV",
+        "D_DIST": "D_DIST",
+        "DAREACENSO": "DAREACENSO",
+        "NLAT_IE": "NLAT_IE",
+        "NLONG_IE": "NLONG_IE"
+    },
+    "fields": [
+        {
+            "name": "COD_MOD",
+            "type": "esriFieldTypeString",
+            "alias": "COD_MOD",
+            "length": 7
+        },
+        {
+            "name": "CODLOCAL",
+            "type": "esriFieldTypeString",
+            "alias": "CODLOCAL",
+            "length": 6
+        },
+        {
+            "name": "CEN_EDU",
+            "type": "esriFieldTypeString",
+            "alias": "CEN_EDU",
+            "length": 100
+        },
+        {
+            "name": "D_NIV_MOD",
+            "type": "esriFieldTypeString",
+            "alias": "D_NIV_MOD",
+            "length": 50
+        },
+        {
+            "name": "CEN_POB",
+            "type": "esriFieldTypeString",
+            "alias": "CEN_POB",
+            "length": 100
+        },
+        {
+            "name": "CODCP_INEI",
+            "type": "esriFieldTypeString",
+            "alias": "CODCP_INEI",
+            "length": 10
+        },
+        {
+            "name": "D_DPTO",
+            "type": "esriFieldTypeString",
+            "alias": "D_DPTO",
+            "length": 15
+        },
+        {
+            "name": "D_PROV",
+            "type": "esriFieldTypeString",
+            "alias": "D_PROV",
+            "length": 40
+        },
+        {
+            "name": "D_DIST",
+            "type": "esriFieldTypeString",
+            "alias": "D_DIST",
+            "length": 60
+        },
+        {
+            "name": "DAREACENSO",
+            "type": "esriFieldTypeString",
+            "alias": "DAREACENSO",
+            "length": 12
+        },
+        {
+            "name": "NLAT_IE",
+            "type": "esriFieldTypeDouble",
+            "alias": "NLAT_IE"
+        },
+        {
+            "name": "NLONG_IE",
+            "type": "esriFieldTypeDouble",
+            "alias": "NLONG_IE"
+        }
+    ],
+    "features": [
+        {
+            "attributes": {
+                "COD_MOD": "0226993",
+                "CODLOCAL": "444016",
+                "CEN_EDU": "70805",
+                "D_NIV_MOD": "Primaria",
+                "CEN_POB": "CHARAMAYA",
+                "CODCP_INEI": "2101090066",
+                "D_DPTO": "PUNO",
+                "D_PROV": "PUNO",
+                "D_DIST": "MA\u00d1AZO",
+                "DAREACENSO": "Rural",
+                "NLAT_IE": -15.984578,
+                "NLONG_IE": -70.503961
+            }
+        },
+        {
+            "attributes": {
+                "COD_MOD": "0227421",
+                "CODLOCAL": "441541",
+                "CEN_EDU": "70682",
+                "D_NIV_MOD": "Primaria",
+                "CEN_POB": "UROS TORANI PATA",
+                "CODCP_INEI": "2101010009",
+                "D_DPTO": "PUNO",
+                "D_PROV": "PUNO",
+                "D_DIST": "PUNO",
+                "DAREACENSO": "Rural",
+                "NLAT_IE": -15.817633,
+                "NLONG_IE": -69.969558
+            }
+        },
+        {
+            "attributes": {
+                "COD_MOD": "0230128",
+                "CODLOCAL": "442994",
+                "CEN_EDU": "70002 NUESTRA SE\u00d1ORA DE LOS CAMPOS",
+                "D_NIV_MOD": "Primaria",
+                "CEN_POB": "TAQUILE",
+                "CODCP_INEI": " ",
+                "D_DPTO": "PUNO",
+                "D_PROV": "PUNO",
+                "D_DIST": "AMANTANI",
+                "DAREACENSO": "Rural",
+                "NLAT_IE": -15.767913,
+                "NLONG_IE": -69.682878
+            }
+        },
+        {
+            "attributes": {
+                "COD_MOD": "0230177",
+                "CODLOCAL": "444752",
+                "CEN_EDU": "70007",
+                "D_NIV_MOD": "Primaria",
+                "CEN_POB": "TIQUILLACA",
+                "CODCP_INEI": "2101140001",
+                "D_DPTO": "PUNO",
+                "D_PROV": "PUNO",
+                "D_DIST": "TIQUILLACA",
+                "DAREACENSO": "Rural",
+                "NLAT_IE": -15.79806,
+                "NLONG_IE": -70.18593
+            }
+        },
+        {
+            "attributes": {
+                "COD_MOD": "0230185",
+                "CODLOCAL": "443007",
+                "CEN_EDU": "70008",
+                "D_NIV_MOD": "Primaria",
+                "CEN_POB": "SANCAYUNI",
+                "CODCP_INEI": "2101030004",
+                "D_DPTO": "PUNO",
+                "D_PROV": "PUNO",
+                "D_DIST": "AMANTANI",
+                "DAREACENSO": "Rural",
+                "NLAT_IE": -15.658213,
+                "NLONG_IE": -69.705394
+            }
+        }
+    ],
+    "exceededTransferLimit": true
+}

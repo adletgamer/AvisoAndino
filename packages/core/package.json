@@ -1,0 +1,16 @@
+{
+  "name": "@aviso/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": { "test": "vitest run" },
+  "dependencies": {
+    "@turf/bbox": "^7.4.0",
+    "@turf/boolean-point-in-polygon": "^7.4.0",
+    "@turf/helpers": "^7.4.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": { "@types/geojson": "^7946.0.14" }
+}

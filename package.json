@@ -1,0 +1,31 @@
+{
+  "name": "aviso-andino",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Avisos oficiales de SENAMHI convertidos en SMS claros para colegios rurales del Peru",
+  "license": "MIT",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "workspaces": ["packages/*", "services/*", "infra", "apps/*"],
+  "scripts": {
+    "lint": "eslint . && tsc -b --noEmit",
+    "test": "vitest run",
+    "test:cov": "vitest run --coverage",
+    "synth": "npm run synth -w infra --",
+    "diff": "npm run diff -w infra --",
+    "deploy": "npm run build -w apps/web --if-present && npm run deploy -w infra --",
+    "dev": "npm run dev -w apps/web",
+    "seed:demo": "tsx scripts/seed-demo.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@vitest/coverage-v8": "^5.0.2",
+    "aws-sdk-client-mock": "^4.0.0",
+    "eslint": "^9.0.0",
+    "prettier": "^3.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.6.0",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^5.0.2"
+  }
+}
