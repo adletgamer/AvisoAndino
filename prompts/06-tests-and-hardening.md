@@ -20,7 +20,7 @@ Contexto: **Aviso Andino**, a días del deadline. Lee `AGENTS.md` y `docs/ARCHIT
 - [ ] Throttling del HTTP API configurado. `POST /replay` con allowlist. Honeypot activo.
 - [ ] S3 privados con `enforceSSL`, CloudFront con HTTPS redirect y security headers (response headers policy: HSTS, nosniff, frame-deny, CSP básica compatible con teselas OSM).
 - [ ] `cdk-nag` AwsSolutions: 0 errores sin justificar.
-- [ ] `npm audit --omit=dev` sin vulnerabilidades altas o críticas (o justificadas).
+- [ ] `pnpm audit --prod` sin vulnerabilidades altas o críticas (o justificadas).
 - [ ] Secretos: `git log -p | grep -iE "bot[0-9]{6,}:|AKIA|secret"` sin resultados.
 
 **Fiabilidad y operación**

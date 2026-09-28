@@ -7,7 +7,7 @@ Lee primero: `docs/RULES.md`, `docs/ARCHITECTURE.md`, `docs/DATA_MODEL.md`, `doc
 1. **Un LLM nunca decide una alerta.** Quién, cuándo, nivel y geometría salen solo de `packages/core` (código determinista con tests). Bedrock solo reescribe texto detrás de `REWRITE_ENABLED` y su salida pasa por `rewriteValidator`. Si el validador falla → plantilla.
 2. **Nunca commitear secretos** (tokens de Telegram, claves, account IDs en código, `.env`). Los secretos van en SSM Parameter Store SecureString bajo `/aviso-andino/<stage>/…`. `.env.example` solo lleva nombres. Si ves un secreto en el diff, detente y avisa.
 3. **Nunca enviar SMS reales desde tests, replay o scripts de seed.** Los tests mockean los clientes AWS (`aws-sdk-client-mock`). El replay usa siempre `SIMULATED`. El envío real exige `SMS_ENABLED=true` en SSM **y** que el número esté en la allowlist mientras la cuenta siga en sandbox.
-4. **Test antes de deploy**: `npm run lint && npm test && npm run synth` en verde antes de cualquier `cdk deploy`. Nunca `--require-approval never` sobre cambios de IAM sin mostrar el diff (`npm run diff`) a la humana.
+4. **Test antes de deploy**: `pnpm lint && pnpm test && pnpm synth` en verde antes de cualquier `cdk deploy`. Nunca `--require-approval never` sobre cambios de IAM sin mostrar el diff (`pnpm diff`) a la humana.
 5. **Guardarraíles de costo**: nada con costo fijo por hora (NAT Gateway, RDS, OpenSearch, instancias EC2, WAF, Kinesis) sin permiso explícito. Lambdas arm64, DynamoDB on-demand y logs con retención de 14 días. Los topes `SMS_DAILY_CAP` y `MaxPrice` no se quitan. Recordatorio: 1 SMS a Perú = **USD 0,23252** y el sandbox permite USD 1/mes.
 6. **Solo fuentes oficiales para alertar**: SENAMHI WFS (primaria) e INDECI GeoSINPAD (fallback). Open-Meteo solo enriquece (Tmin), nunca dispara.
 7. **Privacidad**: jamás loguear teléfonos completos ni chat IDs (usar `maskPhone`). No usar los campos `DIRECTOR`, `TELEFONO` y `EMAIL` de la capa MINEDU para contactar a nadie.
@@ -26,15 +26,16 @@ Lee primero: `docs/RULES.md`, `docs/ARCHITECTURE.md`, `docs/DATA_MODEL.md`, `doc
 
 ## Comandos
 ```bash
-npm ci                      # instalar (workspaces)
-npm run lint                # eslint + tsc --noEmit
-npm test                    # vitest en todos los workspaces (offline, con fixtures)
-RUN_LIVE=1 npm test -w services/ingest   # tests contra SENAMHI/INDECI reales (opcional)
-npm run synth               # cdk synth (stage=dev por defecto)
-npm run diff -- -c stage=prod
-npm run deploy -- -c stage=prod          # SOLO tras tests en verde; preferir ejecutarlo vía AWS MCP / Agent Toolkit
-npm run dev -w apps/web     # frontend local (usa VITE_API_BASE)
-npm run seed:demo -- --stage prod        # suscriptores demo SIMULATED
+corepack enable
+pnpm install --frozen-lockfile            # instalar (workspaces)
+pnpm lint                                 # eslint + tsc --noEmit
+pnpm test                                 # vitest en todos los workspaces (offline, con fixtures)
+RUN_LIVE=1 pnpm --filter @aviso/svc-ingest test   # tests contra SENAMHI/INDECI reales (opcional)
+pnpm synth                                # cdk synth (stage=dev por defecto)
+pnpm diff -- -c stage=prod
+pnpm deploy -- -c stage=prod              # SOLO tras tests en verde; preferir ejecutarlo vía AWS MCP / Agent Toolkit
+pnpm dev                                  # frontend local (usa VITE_API_BASE)
+pnpm seed:demo --stage prod               # suscriptores demo SIMULATED
 ./scripts/fetch-fixtures.sh # refrescar fixtures reales
 ```
 
@@ -44,4 +45,4 @@ npm run seed:demo -- --stage prod        # suscriptores demo SIMULATED
 - Antes de un deploy, muestra qué cambia (`cdk diff`) y espera confirmación si hay cambios de IAM, de datos o de costo.
 
 ## Definición de terminado (por tarea)
-- Tests nuevos o actualizados en verde. Criterios de aceptación del prompt cumplidos. Docs afectados actualizados (RULES/API/DATA_MODEL). Sin secretos. `npm run synth` OK. Si se desplegó: URL o comando de verificación y resultado pegados en el resumen.
+- Tests nuevos o actualizados en verde. Criterios de aceptación del prompt cumplidos. Docs afectados actualizados (RULES/API/DATA_MODEL). Sin secretos. `pnpm synth` OK. Si se desplegó: URL o comando de verificación y resultado pegados en el resumen.

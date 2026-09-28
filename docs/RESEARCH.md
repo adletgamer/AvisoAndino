@@ -114,7 +114,7 @@ Fuente: `https://docs.aws.amazon.com/sms-voice/latest/userguide/phone-numbers-sm
 
 ## 5. Librerías y runtimes
 
-- `npm view` (28-sep): `@turf/boolean-point-in-polygon` 7.4.0 (Polygon y MultiPolygon con huecos, opción `ignoreBoundary`), `@turf/bbox` 7.x, `aws-cdk-lib` 2.271.0, `aws-cdk` (CLI) 2.1143.0, `@aws-sdk/client-pinpoint-sms-voice-v2` 3.1142.0, `@aws-sdk/client-bedrock-runtime` 3.1142.0, `@aws-sdk/lib-dynamodb` 3.1142.0, `@aws-lambda-powertools/logger|idempotency` 2.35.0, `vite` 8.3.1, `react-leaflet` 5.0.0, `leaflet` 1.9.4, `maplibre-gl` 6.11.2, `vitest` 5.0.2, `zod` 4.6.5, `esbuild` 0.28.2.
+- `pnpm view` (28-sep): `@turf/boolean-point-in-polygon` 7.4.0 (Polygon y MultiPolygon con huecos, opción `ignoreBoundary`), `@turf/bbox` 7.x, `aws-cdk-lib` 2.271.0, `aws-cdk` (CLI) 2.1143.0, `@aws-sdk/client-pinpoint-sms-voice-v2` 3.1142.0, `@aws-sdk/client-bedrock-runtime` 3.1142.0, `@aws-sdk/lib-dynamodb` 3.1142.0, `@aws-lambda-powertools/logger|idempotency` 2.35.0, `vite` 8.3.1, `react-leaflet` 5.0.0, `leaflet` 1.9.4, `maplibre-gl` 6.11.2, `vitest` 5.0.2, `zod` 4.6.5, `esbuild` 0.28.2.
 - En Python: `shapely` necesita binarios GEOS (capa o contenedor). Turf es JS puro. Por eso elegimos TypeScript.
 - Runtimes de Lambda (`https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtimes.html`): **`nodejs20.x` quedó deprecado el 30-abr-2026**. Usar **`nodejs24.x`** (deprecación 30-abr-2028). `python3.12` también está soportado.
 

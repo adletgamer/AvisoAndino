@@ -7,7 +7,7 @@ Contexto: proyecto **Aviso Andino** (lee `AGENTS.md`, `docs/ARCHITECTURE.md`, `d
 1. **DynamoDB** (PAY_PER_REQUEST, PITR, TTL `ttl`, RETAIN en prod y DESTROY en dev): `Subscribers` (GSIs `byPhoneHash`, `byTelegramChat`, `byStatus`), `Warnings` (`byActive`, `byAviso`), `Deliveries` (`byConfirmCode`, `bySubscriber`, `byWarning`, `byRun`) y `Stats` (PK `statsPk`, SK `statsSk`). Claves exactas en DATA_MODEL.md.
 2. **S3** `snapshots` (privado, SSE-S3, `enforceSSL`, lifecycle de 30 días salvo el prefijo `replay/`) y `web` (privado, servido por CloudFront con OAC).
 3. **SQS** `match-queue` y `send-queue`, cada una con DLQ (`maxReceiveCount` 3, retención de 14 días), visibility timeout ≥ 6× el timeout de la Lambda consumidora.
-4. **Lambdas** `NodejsFunction` (runtime `NODEJS_24_X`, arm64, logs JSON, retención de 14 días, env vars con nombres de tablas y colas):
+4. **Lambdas** `NodejsFunction` (runtime `NODEJS_24_X`, arm64, logs JSON, retención de 14 días, env vars con nombres de tablas y colas). Para que esbuild resuelva el monorepo pnpm, usa el `pnpm-lock.yaml` raíz mediante `depsLockFilePath: path.join(process.cwd(), '..', 'pnpm-lock.yaml')`:
    - `ingest` (60 s, 512 MB) ← **EventBridge Scheduler** `rate(15 minutes)` (L2 `aws-cdk-lib/aws-scheduler` `Schedule` + `aws-cdk-lib/aws-scheduler-targets` `LambdaInvoke`). Con un flag `SCHEDULE_ENABLED` se puede pausar.
    - `matcher` (60 s, 512 MB) ← SQS match-queue (batch 1, `reportBatchItemFailures`).
    - `sender` (30 s, 256 MB, `reservedConcurrentExecutions: 2`) ← SQS send-queue.
@@ -25,7 +25,7 @@ Contexto: proyecto **Aviso Andino** (lee `AGENTS.md`, `docs/ARCHITECTURE.md`, `d
 14. (Recomendado) `cdk-nag` AwsSolutions con supresiones justificadas.
 
 ## Deploy
-- `npm run lint && npm test && npm run synth` en verde. Muestra `npm run diff -- -c stage=prod` y **espera mi OK**.
+- `pnpm lint && pnpm test && pnpm synth` en verde. Muestra `pnpm diff -- -c stage=prod` y **espera mi OK**.
 - Despliega **usando el AWS MCP Server / Agent Toolkit** (o la CLI desde el agente conectado). Si hace falta, `cdk bootstrap aws://<acct>/us-east-1` antes.
 - Tras el deploy, verifica vía MCP: `cloudformation describe-stacks`, `curl WebUrl` (200) e invocación manual de `ingest`.
 

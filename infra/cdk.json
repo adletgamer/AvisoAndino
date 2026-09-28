@@ -1,5 +1,5 @@
 {
-  "app": "npx tsx bin/app.ts",
+  "app": "pnpm exec tsx bin/app.ts",
   "context": {
     "stage": "dev",
     "alarmEmail": "",

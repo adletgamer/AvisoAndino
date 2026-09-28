@@ -24,6 +24,6 @@ Contexto: **Aviso Andino**. Lee `AGENTS.md`, `docs/RESEARCH.md` §1 (campos real
 7. Script `scripts/fetch-fixtures.sh` que vuelva a bajar los fixtures (con `curl`), recortándolos como los actuales.
 
 ## Criterios de aceptación
-- `npm test -w services/ingest -w packages/core` en verde offline.
+- `pnpm --filter @aviso/svc-ingest --filter @aviso/core test` en verde offline.
 - Desplegado (vía agente/MCP): una invocación manual crea Warnings reales en DynamoDB y snapshots en S3. La segunda invocación inmediata no crea nada nuevo (idempotente).
 - Logs JSON sin datos personales. Duración de la corrida < 50 s.

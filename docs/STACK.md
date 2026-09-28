@@ -1,7 +1,7 @@
 # Stack elegido (y por qué)
 
 ## Resumen
-| Capa | Elección | Versión fijada (npm, 28-sep-2026) |
+| Capa | Elección | Versión fijada (registro de paquetes, 28-sep-2026) |
 |---|---|---|
 | Lenguaje | **TypeScript** en todo el repo (infra, Lambdas, web, core) | TS 5.x |
 | Runtime Lambda | **`nodejs24.x`**, arm64 | Node 24 LTS (`nodejs20.x` quedó deprecado el 30-abr-2026) |
@@ -16,7 +16,7 @@
 | Estilos | CSS simple o Pico.css. Mobile-first y alto contraste (el público usa celulares básicos) | – |
 | Tests | **Vitest** (unit y handlers con mocks), `aws-sdk-client-mock`, `msw` o fixtures locales para HTTP, y `cdk assert` con `Template.fromStack` | vitest 5.x |
 | Calidad | ESLint (typescript-eslint) + Prettier, `tsc --noEmit` en CI | – |
-| Monorepo | **npm workspaces**, sin Nx ni Turbo | npm 10+ |
+| Monorepo | **pnpm workspaces**, sin Nx ni Turbo | pnpm 12.6.0 (Corepack) |
 | CI (opcional) | GitHub Actions: lint + test + `cdk synth`. **El deploy lo hace el agente vía Agent Toolkit o la CLI** (es lo que evalúa el hackathon) | – |
 
 ## Por qué TypeScript/Node 24 y no Python 3.12

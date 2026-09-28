@@ -47,18 +47,19 @@ scripts/                fixtures, seed demo, prueba CloudTrail
 ## Desarrollo local
 ```bash
 nvm use            # Node 24
-npm ci
-npm test           # offline, con fixtures reales
-npm run dev        # web en http://localhost:5173 (VITE_API_PROXY para apuntar a la API desplegada)
-RUN_LIVE=1 npm test -w services/ingest   # opcional: contra SENAMHI/INDECI reales
+corepack enable
+pnpm install --frozen-lockfile
+pnpm test          # offline, con fixtures reales
+pnpm dev           # web en http://localhost:5173 (VITE_API_PROXY para apuntar a la API desplegada)
+RUN_LIVE=1 pnpm --filter @aviso/svc-ingest test   # opcional: contra SENAMHI/INDECI reales
 ```
 
 ## Despliegue (lo hace el agente, vía Agent Toolkit for AWS)
 1. Requisitos: AWS CLI ≥ 2.35.0, `aws configure agent-toolkit` (o el banner "Get setup prompt" de Console Home) y el plugin `aws-core` en tu agente ([guía](https://builder.aws.com/content/3JQdUYne1ujIvtoLgWiV7iBGklF/connect-your-ai-coding-agent-to-aws), [repo](https://github.com/aws/agent-toolkit-for-aws)).
 2. Secretos a mano en SSM (SecureString): `/aviso-andino/prod/telegram/botToken`, `/aviso-andino/prod/telegram/webhookSecret`, `/aviso-andino/prod/phoneHmacKey`.
-3. `npm run lint && npm test && npm run synth` → `npm run diff -- -c stage=prod` → `npm run deploy -- -c stage=prod -c alarmEmail=<tu email>`.
+3. `pnpm lint && pnpm test && pnpm synth` → `pnpm diff -- -c stage=prod` → `pnpm deploy -- -c stage=prod -c alarmEmail=<tu email>`.
 4. Registrar el webhook de Telegram: `https://api.telegram.org/bot<token>/setWebhook?url=<WebUrl>/api/telegram/webhook&secret_token=<secret>`.
-5. `npm run seed:demo -- --stage prod`.
+5. `pnpm seed:demo --stage prod`.
 6. Para SMS reales: verificar tu número en la consola de End User Messaging (sandbox), añadir su hash a `/aviso-andino/prod/sms/allowlist` y poner `SMS_ENABLED=true`.
 
 ## Guion de demo (3 min en vivo)
