@@ -1,0 +1,54 @@
+flowchart TB
+  subgraph SRC["Fuentes oficiales y abiertas"]
+    direction LR
+    SL["SENAMHI<br/>lista de avisos"]
+    WFS["SENAMHI WFS<br/>poligonos por aviso"]
+    IND["INDECI GeoSINPAD<br/>fallback PP24H"]
+    OM["Open-Meteo<br/>Tmin por punto"]
+  end
+  subgraph ING_G["1. Ingesta"]
+    direction LR
+    SCH["EventBridge Scheduler<br/>cada 15-30 min"] --> ING["Lambda ingest"]
+    ING --> S3R[("S3<br/>snapshots crudos")]
+  end
+  subgraph DEC_G["2. Decision deterministica"]
+    direction LR
+    QM[["SQS match + DLQ"]] --> MAT["Lambda matcher<br/>punto en poligono + reglas + dedup"]
+  end
+  subgraph DEL_G["3. Entrega"]
+    direction LR
+    QS[["SQS send + DLQ"]] --> SND["Lambda sender<br/>plantilla GSM-7"]
+    SND -. "opcional y validado" .-> BR["Bedrock Nova Micro<br/>solo reescribe"]
+  end
+  subgraph CH["Canales"]
+    direction LR
+    EUM["End User Messaging SMS<br/>solo ida en Peru"]
+    TG["Telegram Bot<br/>two-way: responde 1"]
+    SIM["Canal SIMULADO<br/>telefono virtual web"]
+  end
+  subgraph WEB["4. Web publica y API"]
+    direction LR
+    CF["CloudFront + S3<br/>registro, dashboard, replay, /c/codigo"] --> API["API Gateway HTTP API<br/>Lambda api"]
+  end
+  DDB[("DynamoDB<br/>Subscribers, Warnings,<br/>Deliveries, Stats")]
+  OBS["CloudWatch logs + alarmas<br/>AWS Budgets, SSM"]
+  U(("Director o familia"))
+
+  SL --> ING
+  WFS --> ING
+  IND -.-> ING
+  ING --> DDB
+  ING --> QM
+  OM --> MAT
+  MAT --> DDB
+  MAT --> QS
+  SND --> EUM
+  SND --> TG
+  SND --> SIM
+  SND --> DDB
+  EUM --> U
+  TG --> U
+  U -->|"toca enlace de confirmacion"| CF
+  TG -->|"webhook"| API
+  API --> DDB
+  DEL_G -.-> OBS
