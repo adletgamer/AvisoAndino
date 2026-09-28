@@ -2,6 +2,7 @@ node_modules/
 dist/
 cdk.out/
 coverage/
+*.tsbuildinfo
 .env
 .env.*
 !.env.example
