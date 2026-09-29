@@ -17,6 +17,7 @@
     "synth": "pnpm --filter @aviso/infra synth",
     "diff": "pnpm --filter @aviso/infra diff",
     "deploy": "pnpm --filter @aviso/web build && pnpm --filter @aviso/infra run deploy",
+    "deploy:web": "pnpm --filter @aviso/web build && pnpm --filter @aviso/infra run deploy:web",
     "dev": "pnpm --filter @aviso/web dev",
     "seed:demo": "tsx scripts/seed-demo.ts"
   },
