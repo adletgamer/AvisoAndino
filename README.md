@@ -144,6 +144,8 @@ aws ssm put-parameter --name /aviso-andino/dev/sms/dryRun --type String --overwr
 aws ssm put-parameter --name /aviso-andino/dev/sms/dryRun --type String --overwrite --value false $P  # antes del SMS real
 ```
 
+Estado de entrega: en Perú (ruta compartida, sin número de origen) el evento final suele ser `TEXT_SUCCESSFUL` («aceptado por el operador»); el operador puede no devolver `TEXT_DELIVERED`. El panel lo muestra como enviado.
+
 ## Costo estimado (piloto, al mes)
 
 | Concepto                                                         | Estimación                                                                                                                                                                                |
