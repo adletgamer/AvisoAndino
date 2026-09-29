@@ -3,8 +3,8 @@ import { Match, Template } from 'aws-cdk-lib/assertions';
 import { describe, expect, it } from 'vitest';
 import { AvisoAndinoStack } from '../lib/aviso-andino-stack.js';
 
-function synthTemplate(smsInfra = false): Template {
-  const app = new App({ context: { stage: 'dev', scheduleEnabled: false, smsInfra } });
+function synthTemplate(smsInfra = false, extraContext: Record<string, unknown> = {}): Template {
+  const app = new App({ context: { stage: 'dev', scheduleEnabled: false, smsInfra, ...extraContext } });
   const stack = new AvisoAndinoStack(app, 'AvisoAndino-dev', {
     stage: 'dev',
     env: { region: 'us-east-1' },
@@ -168,6 +168,31 @@ describe('AvisoAndinoStack', () => {
     expect(stageList).toHaveLength(1);
     const dependsOn = (stageList[0] as { DependsOn?: string[] }).DependsOn ?? [];
     expect(dependsOn).toContain(replayRouteIds[0]);
+  });
+
+  it('no reserva concurrencia Lambda por defecto (cuentas con límite 10)', () => {
+    const template = synthTemplate(true);
+    for (const fn of Object.values(template.findResources('AWS::Lambda::Function'))) {
+      expect((fn as { Properties: Record<string, unknown> }).Properties.ReservedConcurrentExecutions).toBeUndefined();
+    }
+    synthTemplate(false, { senderReservedConcurrency: '2' }).hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'zts-aviso-andino-dev-sender',
+      ReservedConcurrentExecutions: 2,
+    });
+  });
+
+  it('con webDist=false omite bucket web y CloudFront, y usa publicBaseUrl', () => {
+    const template = synthTemplate(false, { webDist: false, publicBaseUrl: 'https://example.cloudfront.net' });
+    template.resourceCountIs('AWS::CloudFront::Distribution', 0);
+    template.resourceCountIs('Custom::CDKBucketDeployment', 0);
+    template.resourceCountIs('AWS::S3::Bucket', 1);
+    template.resourceCountIs('AWS::ApiGatewayV2::Api', 1);
+    template.hasOutput('ApiDomain', {});
+    expect(Object.keys(template.findOutputs('WebUrl'))).toHaveLength(0);
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'zts-aviso-andino-dev-matcher',
+      Environment: { Variables: Match.objectLike({ PUBLIC_BASE_URL: 'https://example.cloudfront.net' }) },
+    });
   });
 
   it('no concede Action wildcard y nombra todos los roles zts-*', () => {
