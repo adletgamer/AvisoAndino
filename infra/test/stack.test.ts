@@ -75,8 +75,14 @@ describe('AvisoAndinoStack', () => {
     template.hasOutput('ConfigurationSetName', { Value: 'aviso-andino-dev' });
   });
 
-  it('incluye colas con DLQ, Scheduler, CloudFront y Budget', () => {
+  it('por defecto no crea CloudFront propio (una sola URL vía AvisoAndino-web)', () => {
     const template = synthTemplate();
+    template.resourceCountIs('AWS::CloudFront::Distribution', 0);
+    template.resourceCountIs('Custom::CDKBucketDeployment', 0);
+  });
+
+  it('incluye colas con DLQ, Scheduler, CloudFront (webDist=true) y Budget', () => {
+    const template = synthTemplate(false, { webDist: true });
     template.hasResourceProperties('AWS::SQS::Queue', { QueueName: 'zts-aviso-andino-dev-match-dlq' });
     template.hasResourceProperties('AWS::SQS::Queue', { QueueName: 'zts-aviso-andino-dev-send-dlq' });
     template.resourceCountIs('AWS::Scheduler::Schedule', 1);
@@ -181,8 +187,8 @@ describe('AvisoAndinoStack', () => {
     });
   });
 
-  it('con webDist=false omite bucket web y CloudFront, y usa publicBaseUrl', () => {
-    const template = synthTemplate(false, { webDist: false, publicBaseUrl: 'https://example.cloudfront.net' });
+  it('sin webDist omite bucket web y CloudFront, y usa publicBaseUrl', () => {
+    const template = synthTemplate(false, { publicBaseUrl: 'https://example.cloudfront.net' });
     template.resourceCountIs('AWS::CloudFront::Distribution', 0);
     template.resourceCountIs('Custom::CDKBucketDeployment', 0);
     template.resourceCountIs('AWS::S3::Bucket', 1);

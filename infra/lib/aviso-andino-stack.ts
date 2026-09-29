@@ -62,10 +62,11 @@ export class AvisoAndinoStack extends Stack {
     const scheduleEnabled = scheduleEnabledContext === true || scheduleEnabledContext === 'true';
     const smsInfraContext = this.node.tryGetContext('smsInfra');
     const smsInfra = smsInfraContext === true || smsInfraContext === 'true';
-    // `-c webDist=false` omite el bucket/CloudFront propios: el frontend vive en AvisoAndino-web-<stage>
-    // (una sola URL pública, que enruta /api/* a este HttpApi). `-c publicBaseUrl=https://...` fija esa URL.
+    // Por defecto NO crea bucket/CloudFront propios: el frontend vive en AvisoAndino-web-<stage>
+    // (una sola URL pública que enruta /api/* a este HttpApi). `-c webDist=true` los recrea (legado).
+    // `-c publicBaseUrl=https://...` fija la URL pública para los enlaces de los mensajes.
     const webDistContext = this.node.tryGetContext('webDist');
-    const webDistribution = !(webDistContext === false || webDistContext === 'false');
+    const webDistribution = webDistContext === true || webDistContext === 'true';
     const publicBaseUrlContext = this.node.tryGetContext('publicBaseUrl') as string | undefined;
     // Concurrencia reservada del sender solo si se pide (`-c senderReservedConcurrency=2`): cuentas nuevas
     // tienen un límite de 10 y AWS exige dejar al menos 10 sin reservar.

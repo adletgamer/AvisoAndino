@@ -63,10 +63,47 @@ Cobertura del core (29-sep-2026): **90,04 % statements / 95,23 % lines** con
 
 1. Requisitos: AWS CLI ≥ 2.35.0, `aws configure agent-toolkit` (o el banner "Get setup prompt" de Console Home) y el plugin `aws-core` en tu agente ([guía](https://builder.aws.com/content/3JQdUYne1ujIvtoLgWiV7iBGklF/connect-your-ai-coding-agent-to-aws), [repo](https://github.com/aws/agent-toolkit-for-aws)).
 2. Secretos a mano en SSM (SecureString): `/aviso-andino/prod/telegram/botToken`, `/aviso-andino/prod/telegram/webhookSecret`, `/aviso-andino/prod/phoneHmacKey`.
-3. `pnpm lint && pnpm test && pnpm synth` → `pnpm diff -- -c stage=prod` → `pnpm deploy -- -c stage=prod -c alarmEmail=<tu email>`.
+3. `pnpm lint && pnpm test && pnpm synth` → `pnpm diff -- -c stage=prod` → `pnpm run deploy -c stage=prod -c alarmEmail=<tu email> -c publicBaseUrl=<WebUrl>` y luego `pnpm run deploy:web -c stage=prod -c apiOriginDomain=<ApiDomain>`.
 4. Registrar el webhook de Telegram: `https://api.telegram.org/bot<token>/setWebhook?url=<WebUrl>/api/telegram/webhook&secret_token=<secret>`.
 5. `pnpm seed:demo --stage prod`.
 6. Para SMS reales: verificar tu número en la consola de End User Messaging (sandbox), añadir su hash a `/aviso-andino/prod/sms/allowlist` y poner `SMS_ENABLED=true`.
+
+## Despliegue dev: dos stacks, una sola URL
+
+La URL pública la sirve **`AvisoAndino-web-<stage>`** (S3 privado + OAC + CloudFront + `apps/web/dist`),
+que enruta `/api/*` al HttpApi de **`AvisoAndino-<stage>`** en la misma distribución. La stack completa
+ya **no** crea su propio CloudFront por defecto (`-c webDist=true` lo recrea, solo legado).
+
+Flags de CDK (todas con valor seguro por defecto):
+
+| Flag | Default | Efecto |
+|---|---|---|
+| `smsInfra` | `false` | Omite ConfigurationSet/ProtectConfiguration SMS, SNS de eventos y Lambda `sms-events` |
+| `scheduleEnabled` | `false` | Scheduler de ingesta creado en estado `DISABLED` |
+| `webDist` | `false` | Bucket/CloudFront propios de la stack completa (legado) |
+| `publicBaseUrl` | `''` | URL pública para los enlaces de los mensajes (`PUBLIC_BASE_URL` del matcher) |
+| `senderReservedConcurrency` | sin reservar | Concurrencia reservada del sender; cuentas nuevas tienen límite 10 y AWS exige dejar 10 libres |
+| `webOnly` | `false` | Sintetiza solo `AvisoAndino-web-<stage>` (lo usa `deploy:web`) |
+| `apiOriginDomain` | — | Dominio del HttpApi para `/api/*` en la distribución web |
+
+```bash
+export PATH=$HOME/.local/node24/bin:$PATH            # Node 24
+export AWS_PROFILE=grokbot-dev AWS_REGION=us-east-1 AWS_DEFAULT_REGION=us-east-1 CDK_DEFAULT_REGION=us-east-1
+
+# 1) Backend (API, tablas, colas, Lambdas; SMS apagado, Scheduler deshabilitado)
+pnpm run deploy -c stage=dev -c scheduleEnabled=false -c smsInfra=false \
+  -c webDist=false -c publicBaseUrl=https://d2p62exvpg7lbb.cloudfront.net --require-approval never
+#    -> salida ApiDomain, p. ej. fxsuf6txx2.execute-api.us-east-1.amazonaws.com
+
+# 2) Frontend + /api/* en la misma distribución (URL estable)
+pnpm run deploy:web -c stage=dev \
+  -c apiOriginDomain=fxsuf6txx2.execute-api.us-east-1.amazonaws.com --require-approval never
+#    -> salida WebUrl = https://d2p62exvpg7lbb.cloudfront.net
+
+curl -s https://d2p62exvpg7lbb.cloudfront.net/api/status   # JSON de la API
+```
+
+Nota: usa `pnpm run deploy`, no `pnpm deploy` (este último es un comando propio de pnpm).
 
 ## Guion de demo (3 min en vivo)
 
