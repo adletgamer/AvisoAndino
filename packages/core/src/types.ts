@@ -1,13 +1,26 @@
 // Tipos de dominio compartidos (backend + web). Ver docs/DATA_MODEL.md y docs/RULES.md.
-import type { Polygon, MultiPolygon } from 'geojson';
+import type { Polygon, MultiPolygon } from "geojson";
 
 /** 1 = verde (NO es aviso), 2 = AMARILLO, 3 = NARANJA, 4 = ROJO */
 export type Level = 1 | 2 | 3 | 4;
-export type Hazard = 'HELADA' | 'LLUVIA' | 'FRIAJE' | 'NEVADA' | 'LLOVIZNA' | 'CALOR' | 'VIENTO' | 'DESCONOCIDO';
-export type Channel = 'SMS' | 'TELEGRAM' | 'SIMULATED';
-export type WarningSource = 'SENAMHI_WFS' | 'INDECI_PP24H' | 'REPLAY';
+export type Hazard =
+  | "HELADA"
+  | "LLUVIA"
+  | "FRIAJE"
+  | "NEVADA"
+  | "LLOVIZNA"
+  | "CALOR"
+  | "VIENTO"
+  | "DESCONOCIDO";
+export type Channel = "SMS" | "TELEGRAM" | "SIMULATED";
+export type WarningSource = "SENAMHI_WFS" | "INDECI_PP24H" | "REPLAY";
 export type LonLat = [lon: number, lat: number];
-export type BBox = [minLon: number, minLat: number, maxLon: number, maxLat: number];
+export type BBox = [
+  minLon: number,
+  minLat: number,
+  maxLon: number,
+  maxLat: number,
+];
 
 export interface WarningArea {
   level: Level;
@@ -34,7 +47,7 @@ export interface NormalizedWarning {
 
 export interface Subscriber {
   subscriberId: string;
-  status: 'PENDING' | 'ACTIVE' | 'OPTED_OUT';
+  status: "PENDING" | "ACTIVE" | "OPTED_OUT";
   channel: Channel;
   lat: number;
   lon: number;
@@ -48,11 +61,25 @@ export interface Subscriber {
 }
 
 export type TemplateId =
-  | 'HELADA' | 'HELADA_SIN_TMIN' | 'LLUVIA' | 'FRIAJE' | 'NEVADA' | 'GENERICO' | 'SUBE_NIVEL' | 'BIENVENIDA';
+  | "HELADA"
+  | "HELADA_SIN_TMIN"
+  | "LLUVIA"
+  | "FRIAJE"
+  | "NEVADA"
+  | "GENERICO"
+  | "SUBE_NIVEL"
+  | "BIENVENIDA";
 
 export type SkipReason =
-  | 'not_active' | 'hazard_disabled' | 'expired' | 'outside_polygons' | 'below_min_level'
-  | 'already_sent' | 'lower_than_sent' | 'extension_suppressed' | 'unknown_cod_fen';
+  | "not_active"
+  | "hazard_disabled"
+  | "expired"
+  | "outside_polygons"
+  | "below_min_level"
+  | "already_sent"
+  | "lower_than_sent"
+  | "extension_suppressed"
+  | "unknown_cod_fen";
 
 export interface Decision {
   send: boolean;
@@ -63,6 +90,7 @@ export interface Decision {
   scheduleAt?: string; // ISO; horario de silencio para nivel 2
   channelOverride?: Channel; // p. ej. SIMULATED por tope diario
   capped?: boolean;
+  warningIds?: string[];
 }
 
 export interface RulesConfig {

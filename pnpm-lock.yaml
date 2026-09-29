@@ -357,6 +357,9 @@ importers:
       '@types/aws-lambda':
         specifier: ^8.10.0
         version: 8.10.163
+      '@types/geojson':
+        specifier: ^7946.0.16
+        version: 7946.0.16
 
   services/matcher:
     dependencies:
@@ -385,6 +388,9 @@ importers:
       '@types/aws-lambda':
         specifier: ^8.10.0
         version: 8.10.163
+      '@types/geojson':
+        specifier: ^7946.0.16
+        version: 7946.0.16
 
   services/sender:
     dependencies:

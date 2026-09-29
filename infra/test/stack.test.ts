@@ -85,6 +85,60 @@ describe('AvisoAndinoStack', () => {
     template.hasResourceProperties('AWS::CloudFront::OriginAccessControl', Match.objectLike({
       OriginAccessControlConfig: Match.objectLike({ OriginAccessControlOriginType: 's3' }),
     }));
+    template.hasResourceProperties('AWS::Scheduler::Schedule', {
+      State: 'DISABLED',
+    });
+  });
+
+  it('cablea handlers con flags seguros y variables requeridas', () => {
+    const template = synthTemplate();
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'zts-aviso-andino-dev-ingest',
+      Environment: {
+        Variables: Match.objectLike({
+          INGEST_ENABLED: 'false',
+          WARNINGS_TABLE: Match.anyValue(),
+          DELIVERIES_TABLE: Match.anyValue(),
+          SNAPSHOTS_BUCKET: Match.anyValue(),
+          MATCH_QUEUE_URL: Match.anyValue(),
+          SEND_QUEUE_URL: Match.anyValue(),
+        }),
+      },
+    });
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'zts-aviso-andino-dev-matcher',
+      Environment: {
+        Variables: Match.objectLike({
+          PUBLIC_BASE_URL: Match.anyValue(),
+          SUBSCRIBERS_TABLE: Match.anyValue(),
+          WARNINGS_TABLE: Match.anyValue(),
+          DELIVERIES_TABLE: Match.anyValue(),
+          STATS_TABLE: Match.anyValue(),
+        }),
+      },
+    });
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'zts-aviso-andino-dev-sender',
+      Environment: {
+        Variables: Match.objectLike({
+          SMS_ENABLED: 'false',
+          SMS_CONFIGURATION_SET: '',
+          SSM_PREFIX: '/aviso-andino/dev',
+          SUBSCRIBERS_TABLE: Match.anyValue(),
+          DELIVERIES_TABLE: Match.anyValue(),
+          STATS_TABLE: Match.anyValue(),
+        }),
+      },
+    });
+    synthTemplate(true).hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'zts-aviso-andino-dev-sender',
+      Environment: {
+        Variables: Match.objectLike({
+          SMS_ENABLED: 'false',
+          SMS_CONFIGURATION_SET: 'aviso-andino-dev',
+        }),
+      },
+    });
   });
 
   it('sintetiza el throttling por ruta con claves CloudFormation PascalCase', () => {
@@ -101,6 +155,19 @@ describe('AvisoAndinoStack', () => {
         },
       },
     });
+  });
+
+  it('crea el Stage por defecto después de la ruta POST /api/replay', () => {
+    const template = synthTemplate();
+    const routes = template.findResources('AWS::ApiGatewayV2::Route', {
+      Properties: { RouteKey: 'POST /api/replay' },
+    });
+    const replayRouteIds = Object.keys(routes);
+    expect(replayRouteIds).toHaveLength(1);
+    const stageList = Object.values(template.findResources('AWS::ApiGatewayV2::Stage'));
+    expect(stageList).toHaveLength(1);
+    const dependsOn = (stageList[0] as { DependsOn?: string[] }).DependsOn ?? [];
+    expect(dependsOn).toContain(replayRouteIds[0]);
   });
 
   it('no concede Action wildcard y nombra todos los roles zts-*', () => {

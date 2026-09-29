@@ -234,6 +234,8 @@ export class AvisoAndinoStack extends Stack {
       MATCH_QUEUE_URL: matchQueue.queueUrl,
       SEND_QUEUE_URL: sendQueue.queueUrl,
       CONFIGURATION_SET_NAME: smsInfra ? configurationSetName : '',
+      SMS_CONFIGURATION_SET: smsInfra ? configurationSetName : '',
+      SSM_PREFIX: `/aviso-andino/${props.stage}`,
       SMS_ENABLED: 'false',
       REWRITE_ENABLED: 'false',
       INGEST_ENABLED: 'false',
@@ -249,7 +251,10 @@ export class AvisoAndinoStack extends Stack {
 
     warnings.grantReadWriteData(ingest);
     snapshotsBucket.grantPut(ingest, 'snapshots/*');
+    snapshotsBucket.grantPut(ingest, 'replay/*');
     matchQueue.grantSendMessages(ingest);
+    deliveries.grantReadWriteData(ingest);
+    sendQueue.grantSendMessages(ingest);
     subscribers.grantReadData(matcher);
     warnings.grantReadData(matcher);
     deliveries.grantReadWriteData(matcher);
@@ -258,9 +263,11 @@ export class AvisoAndinoStack extends Stack {
     sendQueue.grantSendMessages(matcher);
     deliveries.grantReadWriteData(sender);
     stats.grantReadWriteData(sender);
+    subscribers.grantReadData(sender);
     warnings.grantReadData(api);
-    deliveries.grantReadData(api);
-    stats.grantReadData(api);
+    subscribers.grantReadData(api);
+    deliveries.grantReadWriteData(api);
+    stats.grantReadWriteData(api);
     snapshotsBucket.grantRead(api);
     if (smsEvents) {
       deliveries.grantReadWriteData(smsEvents);
@@ -293,6 +300,22 @@ export class AvisoAndinoStack extends Stack {
         service: 'ssm',
         resource: 'parameter',
         resourceName: `aviso-andino/${props.stage}/*`,
+      })],
+    }));
+    sender.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['kms:Decrypt'],
+      resources: [this.formatArn({
+        service: 'kms',
+        resource: 'key',
+        resourceName: '*',
+      })],
+    }));
+    api.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['ssm:GetParameter'],
+      resources: [this.formatArn({
+        service: 'ssm',
+        resource: 'parameter',
+        resourceName: `aviso-andino/${props.stage}/telegram/webhookSecret`,
       })],
     }));
 
@@ -338,11 +361,16 @@ export class AvisoAndinoStack extends Stack {
       [apigwv2.HttpMethod.POST, '/api/telegram/webhook'],
       [apigwv2.HttpMethod.DELETE, '/api/subscribers/{subscriberId}'],
     ];
+    const createdRoutes: apigwv2.HttpRoute[] = [];
     for (const [method, routePath] of routes) {
-      httpApi.addRoutes({ path: routePath, methods: [method], integration: apiIntegration });
+      createdRoutes.push(...httpApi.addRoutes({ path: routePath, methods: [method], integration: apiIntegration }));
     }
     const defaultStage = httpApi.defaultStage?.node.defaultChild as apigwv2.CfnStage | undefined;
     if (defaultStage) {
+      // RouteSettings referencia rutas por clave: el Stage debe crearse después de ellas.
+      for (const route of createdRoutes) {
+        defaultStage.node.addDependency(route);
+      }
       defaultStage.defaultRouteSettings = { throttlingBurstLimit: 10, throttlingRateLimit: 5 };
       defaultStage.routeSettings = {
         'POST /api/replay': { ThrottlingBurstLimit: 2, ThrottlingRateLimit: 1 },
@@ -390,6 +418,7 @@ export class AvisoAndinoStack extends Stack {
         { httpStatus: 404, responseHttpStatus: 200, responsePagePath: '/index.html' },
       ],
     });
+    matcher.addEnvironment('PUBLIC_BASE_URL', `https://${distribution.distributionDomainName}`);
 
     const webDist = path.join(root, 'apps/web/dist');
     const deploymentRole = new iam.Role(this, 'WebDeploymentRole', {
