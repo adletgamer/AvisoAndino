@@ -60,6 +60,8 @@ export class AvisoAndinoStack extends Stack {
     const isDev = props.stage === 'dev';
     const scheduleEnabledContext = this.node.tryGetContext('scheduleEnabled');
     const scheduleEnabled = scheduleEnabledContext === true || scheduleEnabledContext === 'true';
+    const smsInfraContext = this.node.tryGetContext('smsInfra');
+    const smsInfra = smsInfraContext === true || smsInfraContext === 'true';
     const removalPolicy = isDev ? RemovalPolicy.DESTROY : RemovalPolicy.RETAIN;
     const root = fileURLToPath(new URL('../..', import.meta.url));
     const lockFile = path.join(root, 'pnpm-lock.yaml');
@@ -198,30 +200,29 @@ export class AvisoAndinoStack extends Stack {
     });
 
     const configurationSetName = `aviso-andino-${props.stage}`;
-    const protectConfiguration = new smsvoice.CfnProtectConfiguration(this, 'SmsProtectConfiguration', {
-      countryRuleSet: { sms: [{ countryCode: 'PE', protectStatus: 'ALLOW' }] },
-      deletionProtectionEnabled: !isDev,
-    });
-    const smsEventsTopic = new sns.Topic(this, 'SmsEventsTopic', {
-      topicName: `${rolePrefix}-sms-events`,
-    });
-    const configurationSet = new smsvoice.CfnConfigurationSet(this, 'SmsConfigurationSet', {
-      configurationSetName,
-      protectConfigurationId: protectConfiguration.attrProtectConfigurationId,
-      eventDestinations: [{
-        enabled: true,
-        eventDestinationName: 'delivery-events',
-        matchingEventTypes: [
-          'TEXT_SUCCESSFUL',
-          'TEXT_DELIVERED',
-          'TEXT_FAILED',
-          'TEXT_BLOCKED',
-          'TEXT_INVALID',
-          'TEXT_UNKNOWN',
-        ],
-        snsDestination: { topicArn: smsEventsTopic.topicArn },
-      }],
-    });
+    let configurationSet: smsvoice.CfnConfigurationSet | undefined;
+    let smsEventsTopic: sns.Topic | undefined;
+    if (smsInfra) {
+      const protectConfiguration = new smsvoice.CfnProtectConfiguration(this, 'SmsProtectConfiguration', {
+        countryRuleSet: { sms: [{ countryCode: 'PE', protectStatus: 'ALLOW' }] },
+        deletionProtectionEnabled: !isDev,
+      });
+      smsEventsTopic = new sns.Topic(this, 'SmsEventsTopic', {
+        topicName: `${rolePrefix}-sms-events`,
+      });
+      configurationSet = new smsvoice.CfnConfigurationSet(this, 'SmsConfigurationSet', {
+        configurationSetName,
+        protectConfigurationId: protectConfiguration.attrProtectConfigurationId,
+        eventDestinations: [{
+          enabled: true,
+          eventDestinationName: 'delivery-events',
+          // AWS SMS Voice v2 accepts TEXT_ALL; TEXT_FAILED is not a valid event type.
+          // https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-properties-smsvoice-configurationset-eventdestination.html
+          matchingEventTypes: ['TEXT_ALL'],
+          snsDestination: { topicArn: smsEventsTopic.topicArn },
+        }],
+      });
+    }
 
     const sharedEnvironment = {
       STAGE: props.stage,
@@ -232,7 +233,7 @@ export class AvisoAndinoStack extends Stack {
       SNAPSHOTS_BUCKET: snapshotsBucket.bucketName,
       MATCH_QUEUE_URL: matchQueue.queueUrl,
       SEND_QUEUE_URL: sendQueue.queueUrl,
-      CONFIGURATION_SET_NAME: configurationSetName,
+      CONFIGURATION_SET_NAME: smsInfra ? configurationSetName : '',
       SMS_ENABLED: 'false',
       REWRITE_ENABLED: 'false',
       INGEST_ENABLED: 'false',
@@ -242,7 +243,9 @@ export class AvisoAndinoStack extends Stack {
     const matcher = this.nodeFunction('Matcher', 'matcher', 512, 60, sharedEnvironment, root, lockFile);
     const sender = this.nodeFunction('Sender', 'sender', 256, 30, sharedEnvironment, root, lockFile, 2);
     const api = this.nodeFunction('Api', 'api', 256, 10, sharedEnvironment, root, lockFile);
-    const smsEvents = this.nodeFunction('SmsEvents', 'sms-events', 256, 10, sharedEnvironment, root, lockFile);
+    const smsEvents = smsInfra
+      ? this.nodeFunction('SmsEvents', 'sms-events', 256, 10, sharedEnvironment, root, lockFile)
+      : undefined;
 
     warnings.grantReadWriteData(ingest);
     snapshotsBucket.grantPut(ingest, 'snapshots/*');
@@ -259,13 +262,17 @@ export class AvisoAndinoStack extends Stack {
     deliveries.grantReadData(api);
     stats.grantReadData(api);
     snapshotsBucket.grantRead(api);
-    deliveries.grantReadWriteData(smsEvents);
-    stats.grantReadWriteData(smsEvents);
+    if (smsEvents) {
+      deliveries.grantReadWriteData(smsEvents);
+      stats.grantReadWriteData(smsEvents);
+    }
 
-    sender.addToRolePolicy(new iam.PolicyStatement({
-      actions: ['sms-voice:SendTextMessage'],
-      resources: [configurationSet.attrArn],
-    }));
+    if (configurationSet) {
+      sender.addToRolePolicy(new iam.PolicyStatement({
+        actions: ['sms-voice:SendTextMessage'],
+        resources: [configurationSet.attrArn],
+      }));
+    }
     sender.addToRolePolicy(new iam.PolicyStatement({
       actions: ['bedrock:InvokeModel'],
       resources: [
@@ -297,7 +304,9 @@ export class AvisoAndinoStack extends Stack {
       batchSize: 1,
       reportBatchItemFailures: true,
     }));
-    smsEventsTopic.addSubscription(new subscriptions.LambdaSubscription(smsEvents));
+    if (smsEventsTopic && smsEvents) {
+      smsEventsTopic.addSubscription(new subscriptions.LambdaSubscription(smsEvents));
+    }
 
     const schedulerRole = new iam.Role(this, 'SchedulerRole', {
       roleName: `${rolePrefix}-scheduler`,
@@ -453,7 +462,9 @@ export class AvisoAndinoStack extends Stack {
     new CfnOutput(this, 'StatsTableName', { value: stats.tableName });
     new CfnOutput(this, 'MatchQueueName', { value: matchQueue.queueName });
     new CfnOutput(this, 'SendQueueName', { value: sendQueue.queueName });
-    new CfnOutput(this, 'ConfigurationSetName', { value: configurationSetName });
+    if (configurationSet) {
+      new CfnOutput(this, 'ConfigurationSetName', { value: configurationSetName });
+    }
   }
 
   private queue(
