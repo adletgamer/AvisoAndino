@@ -14,9 +14,9 @@ export async function handler(event: SQSEvent): Promise<SQSBatchResponse> {
   for (const record of event.Records) {
     try {
       const { warningId } = JSON.parse(record.body) as { warningId: string };
-      logger.info('match warning', { warningId });
-      // TODO(prompt 03): cargar grupo del aviso + geometrías S3, suscriptores ACTIVE, decide(), PutItem condicional, SQS send-queue
-      throw new Error('TODO matcher');
+      logger.info('match dry run', { warningId });
+      // El consumidor queda cableado para Prompt 03. Hasta que las reglas completas
+      // estén probadas, no crea Deliveries ni encola envíos.
     } catch (err) {
       logger.error('match failed', { err, messageId: record.messageId });
       batchItemFailures.push({ itemIdentifier: record.messageId });
