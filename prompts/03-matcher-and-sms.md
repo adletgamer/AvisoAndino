@@ -32,7 +32,7 @@ Hechos clave: SMS a Perú = USD 0,23252/mensaje. Sandbox = USD 1/mes y solo núm
 - Errores de throttling o transitorios → throw (SQS reintenta, DLQ tras 3). Errores permanentes (número inválido) → `FAILED` sin reintento.
 
 ## Parte D: `services/sms-events`
-- SNS → parsea el evento del Configuration Set (`TEXT_SUCCESSFUL`, `TEXT_DELIVERED`, `TEXT_FAILED`, `TEXT_BLOCKED`, …). Correlaciona por `context.deliveryId` y actualiza status + Stats. Loguea el evento completo una vez (sin teléfono) para descubrir el formato real y documentarlo en RESEARCH.md.
+- SNS → parsea el evento del Configuration Set (`TEXT_SUCCESSFUL`, `TEXT_DELIVERED`, `TEXT_UNREACHABLE`, `TEXT_CARRIER_UNREACHABLE`, `TEXT_CARRIER_BLOCKED`, `TEXT_SPAM`, `TEXT_TTL_EXPIRED`, `TEXT_PROTECT_BLOCKED`, `TEXT_INVALID_MESSAGE`, …). Correlaciona por `context.deliveryId` y actualiza status + Stats. SMS Voice v2 no define `TEXT_FAILED`: cada estado de fallo válido se mapea a `FAILED`. Loguea el evento completo una vez (sin teléfono) para descubrir el formato real y documentarlo en RESEARCH.md.
 
 ## Criterios de aceptación
 - Casos 1–19 de RULES.md en verde. Cobertura de `packages/core` ≥ 90 %.

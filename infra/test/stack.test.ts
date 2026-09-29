@@ -87,6 +87,22 @@ describe('AvisoAndinoStack', () => {
     }));
   });
 
+  it('sintetiza el throttling por ruta con claves CloudFormation PascalCase', () => {
+    const template = synthTemplate();
+    template.hasResourceProperties('AWS::ApiGatewayV2::Stage', {
+      DefaultRouteSettings: {
+        ThrottlingBurstLimit: 10,
+        ThrottlingRateLimit: 5,
+      },
+      RouteSettings: {
+        'POST /api/replay': {
+          ThrottlingBurstLimit: 2,
+          ThrottlingRateLimit: 1,
+        },
+      },
+    });
+  });
+
   it('no concede Action wildcard y nombra todos los roles zts-*', () => {
     const template = synthTemplate();
     const roles = Object.values(template.findResources('AWS::IAM::Role'));

@@ -70,7 +70,7 @@ flowchart TB
 | `ingest` | Lambda (Node 24, arm64, 512 MB, 60 s) + EventBridge Scheduler (`rate(15 minutes)`, configurable) | Lee la lista de SENAMHI, detecta avisos nuevos o cambiados, descarga sus polígonos por WFS, normaliza, guarda un snapshot en S3 y el `Warning` en DynamoDB, y encola en `match-queue`. Fallback: INDECI capa 5. |
 | `matcher` | Lambda (SQS `match-queue`, batch 1) | Para cada `Warning`: busca suscriptores candidatos (prefiltro bbox), aplica punto en polígono (Turf), reglas de nivel, fenómeno y horario, y dedup condicional. Crea `Delivery` y encola en `send-queue`. Enriquece con la Tmin de Open-Meteo (cacheada). |
 | `sender` | Lambda (SQS `send-queue`, reserved concurrency 2) | Arma el mensaje con la plantilla GSM-7 (≤160). Opcional: reescritura con Bedrock + validador. Envía por SMS (End User Messaging), Telegram o SIMULADO y actualiza `Delivery`. |
-| `sms-events` | Lambda (SNS desde el Configuration Set de End User Messaging) | Guarda los estados de entrega (`TEXT_DELIVERED`, `TEXT_FAILED`…) en `Delivery`. |
+| `sms-events` | Lambda (SNS desde el Configuration Set de End User Messaging) | Guarda los estados de entrega (`TEXT_DELIVERED`, `TEXT_UNREACHABLE`, `TEXT_CARRIER_BLOCKED`…) en `Delivery`. |
 | `api` | API Gateway HTTP API + Lambda | `POST /subscribers`, `POST /confirm`, `GET /alerts`, `GET /metrics`, `POST /replay`, `POST /telegram/webhook`, `DELETE /subscribers/{id}` (baja). |
 | web | S3 (privado, OAC) + CloudFront | SPA Vite+React+Leaflet: registro, dashboard, replay, página de confirmación `/c/:code`. CloudFront enruta `/api/*` al HTTP API (mismo dominio, sin CORS y con enlaces cortos). |
 | datos | DynamoDB on-demand (4 tablas), S3 (snapshots, lifecycle de 30 días) | Ver `DATA_MODEL.md`. |

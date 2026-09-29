@@ -345,7 +345,7 @@ export class AvisoAndinoStack extends Stack {
     if (defaultStage) {
       defaultStage.defaultRouteSettings = { throttlingBurstLimit: 10, throttlingRateLimit: 5 };
       defaultStage.routeSettings = {
-        'POST /api/replay': { throttlingBurstLimit: 2, throttlingRateLimit: 1 },
+        'POST /api/replay': { ThrottlingBurstLimit: 2, ThrottlingRateLimit: 1 },
       };
     }
 
