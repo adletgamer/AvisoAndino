@@ -21,7 +21,7 @@ import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
-import { NodejsFunction, OutputFormat } from 'aws-cdk-lib/aws-lambda-nodejs';
+import { type ICommandHooks, NodejsFunction, OutputFormat } from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
@@ -256,10 +256,24 @@ export class AvisoAndinoStack extends Stack {
       INGEST_ENABLED: 'false',
     };
 
-    const ingest = this.nodeFunction('Ingest', 'ingest', 512, 60, sharedEnvironment, root, lockFile);
+    // El replay usa snapshots reales del repo (fixtures/) copiados al bundle de ingest.
+    const replaySnapshotFiles = [
+      'senamhi-wfs-aviso.230_1_2026.decimated.geojson',
+      'senamhi-avisos-list.230_2026.row.html',
+    ];
+    const ingest = this.nodeFunction('Ingest', 'ingest', 512, 60, { ...sharedEnvironment, REPLAY_ENABLED: 'true' }, root, lockFile, undefined, {
+      beforeBundling: () => [],
+      beforeInstall: () => [],
+      afterBundling: (inputDir: string, outputDir: string) => [
+        `mkdir -p "${outputDir}/replay-snapshots"`,
+        ...replaySnapshotFiles.map((file) => `cp "${inputDir}/fixtures/${file}" "${outputDir}/replay-snapshots/"`),
+      ],
+    });
     const matcher = this.nodeFunction('Matcher', 'matcher', 512, 60, sharedEnvironment, root, lockFile);
     const sender = this.nodeFunction('Sender', 'sender', 256, 30, sharedEnvironment, root, lockFile, senderReservedConcurrency);
     const api = this.nodeFunction('Api', 'api', 256, 10, sharedEnvironment, root, lockFile);
+    api.addEnvironment('INGEST_FUNCTION_NAME', ingest.functionName);
+    ingest.grantInvoke(api);
     const smsEvents = smsInfra
       ? this.nodeFunction('SmsEvents', 'sms-events', 256, 10, sharedEnvironment, root, lockFile)
       : undefined;
@@ -280,7 +294,7 @@ export class AvisoAndinoStack extends Stack {
     stats.grantReadWriteData(sender);
     subscribers.grantReadData(sender);
     warnings.grantReadData(api);
-    subscribers.grantReadData(api);
+    subscribers.grantReadWriteData(api);
     deliveries.grantReadWriteData(api);
     stats.grantReadWriteData(api);
     snapshotsBucket.grantRead(api);
@@ -325,12 +339,13 @@ export class AvisoAndinoStack extends Stack {
         resourceName: '*',
       })],
     }));
+    // Registro (claves de teléfono), replay (allowlist + demoKey), estado real de SMS_ENABLED y Telegram.
     api.addToRolePolicy(new iam.PolicyStatement({
-      actions: ['ssm:GetParameter'],
+      actions: ['ssm:GetParameter', 'ssm:GetParameters'],
       resources: [this.formatArn({
         service: 'ssm',
         resource: 'parameter',
-        resourceName: `aviso-andino/${props.stage}/telegram/webhookSecret`,
+        resourceName: `aviso-andino/${props.stage}/*`,
       })],
     }));
 
@@ -368,6 +383,7 @@ export class AvisoAndinoStack extends Stack {
       [apigwv2.HttpMethod.GET, '/api/alerts'],
       [apigwv2.HttpMethod.GET, '/api/alerts/{warningId}/geometry'],
       [apigwv2.HttpMethod.GET, '/api/metrics'],
+      [apigwv2.HttpMethod.GET, '/api/panel'],
       [apigwv2.HttpMethod.GET, '/api/confirm/{code}'],
       [apigwv2.HttpMethod.GET, '/api/replay/{runId}/deliveries'],
       [apigwv2.HttpMethod.POST, '/api/subscribers'],
@@ -546,6 +562,7 @@ export class AvisoAndinoStack extends Stack {
     root: string,
     lockFile: string,
     reservedConcurrentExecutions?: number,
+    commandHooks?: ICommandHooks,
   ): NodejsFunction {
     const role = new iam.Role(this, `${id}Role`, {
       roleName: `zts-aviso-andino-${this.node.tryGetContext('stage') ?? 'dev'}-${service}`,
@@ -578,6 +595,7 @@ export class AvisoAndinoStack extends Stack {
         target: 'node24',
         sourceMap: true,
         banner: 'import { createRequire } from "module"; const require = createRequire(import.meta.url);',
+        ...(commandHooks ? { commandHooks } : {}),
       },
     });
   }

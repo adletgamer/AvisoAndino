@@ -13,6 +13,7 @@ Sirven para tests offline. **No son datos vigentes**: no los uses para alertar. 
 | `senamhi-wfs-aviso.388_2_2026.decimated.geojson` | ídem con `qry:388_2_2026` | Día 2 (1-oct). 4 MultiPolygon: Nivel 1, 1, 2, 3 |
 | `senamhi-wfs-aviso.383_1_2026.decimated.geojson` | ídem con `qry:383_1_2026` | Precipitaciones (cod_fen "01") |
 | `senamhi-wfs-aviso.230_1_2026.decimated.geojson` | ídem con `qry:230_1_2026` | **Aviso 230 ROJO heladas (13-jun-2026)**, Nivel 1–4. Colegio 40383 Huambo (−72.108, −15.730) → Nivel 3 (confirmado con el oráculo WFS y con el fixture decimado). Úsalo para el replay |
+| `senamhi-avisos-list.230_2026.row.html` | Fila **real, sin editar** de la lista oficial (descargada el 28-sep-2026 22:17 Lima): título, número, emisión 2026-06-11, vigencia 13–14 jun, **ROJO**. Metadatos del replay 230 (no se inventan) |
 | `senamhi-wfs-point-query.388_2_2026.puno.json` | ídem + `&CQL_FILTER=INTERSECTS(geom,POINT(-70.02 -15.84))&propertyName=…` | Consulta de punto del lado del servidor → Nivel 2 |
 | `senamhi-avisos-list.2026-09-28.trimmed.html` | `https://www.senamhi.gob.pe/?p=aviso-meteorologico` | Tabla `#table_id`, cabecera y 12 filas (388…377) |
 | `open-meteo-forecast.puno-huancavelica.2026-09-28.json` | `https://api.open-meteo.com/v1/forecast?latitude=-15.84,-12.79&longitude=-70.02,-74.97&daily=temperature_2m_min&timezone=America%2FLima&forecast_days=3` | Array de 2 ubicaciones |

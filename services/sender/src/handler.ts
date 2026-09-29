@@ -13,7 +13,8 @@ import {
 } from "@aws-sdk/client-pinpoint-sms-voice-v2";
 import { GetParametersCommand, SSMClient } from "@aws-sdk/client-ssm";
 import { DecryptCommand, KMSClient } from "@aws-sdk/client-kms";
-import { segments, type Channel } from "@aviso/core";
+import { maskPhone, segments, type Channel } from "@aviso/core";
+import { decryptPhone as decryptAesPhone } from "@aviso/core/src/phoneCrypto.js";
 
 const logger = new Logger({ serviceName: "sender" });
 
@@ -28,6 +29,8 @@ interface Delivery {
   status: string;
   scheduleAt?: string;
   createdAt: string;
+  /** Solo lo pone el matcher en replays autorizados con x-demo-key. */
+  allowRealSms?: boolean;
 }
 
 interface SubscriberRecord {
@@ -41,8 +44,10 @@ interface SenderConfig {
   smsEnabled: boolean;
   smsDailyCap: number;
   smsMaxPrice: string;
+  /** Números E.164 exactos (sandbox: verificados). Cualquier otro destino se rechaza. */
   smsAllowlist: Set<string>;
   telegramBotToken?: string;
+  phoneEncKey?: string;
 }
 
 export interface SenderDependencies {
@@ -139,18 +144,31 @@ async function processDelivery(
   const subscriber = subscriberResult.Item as SubscriberRecord;
   let channel = delivery.channel;
   let simulatedReason: string | undefined;
+  let phone: string | undefined;
+  const isReplay = delivery.runId.startsWith("REPLAY#");
   if (channel === "SMS") {
-    const capReached = await smsCapReached(config.smsDailyCap, now, deps);
-    if (!config.smsEnabled) simulatedReason = "SMS_DISABLED";
-    else if (
-      !subscriber.phoneHash ||
-      !config.smsAllowlist.has(subscriber.phoneHash)
-    )
-      simulatedReason = "SMS_NOT_ALLOWLISTED";
-    else if (capReached) simulatedReason = "SMS_DAILY_CAP";
-    if (simulatedReason) channel = "SIMULATED";
-  }
-  if (delivery.runId.startsWith("REPLAY#")) {
+    if (isReplay && delivery.allowRealSms !== true)
+      simulatedReason = "REPLAY_FORCED_SIMULATED";
+    else if (!config.smsEnabled) simulatedReason = "SMS_DISABLED";
+    else {
+      try {
+        phone = subscriber.phoneEnc
+          ? await decryptPhone(subscriber.phoneEnc, config, deps)
+          : undefined;
+      } catch (error) {
+        deps.log.warn("telefono_no_descifrable", { deliveryId, error: errorMessage(error) });
+      }
+      if (!phone) simulatedReason = "SMS_PHONE_UNAVAILABLE";
+      else if (!config.smsAllowlist.has(phone))
+        simulatedReason = "SMS_NOT_ALLOWLISTED";
+      else if (await smsCapReached(config.smsDailyCap, now, deps))
+        simulatedReason = "SMS_DAILY_CAP";
+    }
+    if (simulatedReason) {
+      channel = "SIMULATED";
+      phone = undefined;
+    }
+  } else if (isReplay && channel !== "SIMULATED") {
     channel = "SIMULATED";
     simulatedReason = "REPLAY_FORCED_SIMULATED";
   }
@@ -185,43 +203,12 @@ async function processDelivery(
       subscriber,
       config,
       deps,
+      phone,
     );
-    const sentAt = deps.now();
-    const smsInfo = segments(delivery.text);
-    await deps.ddb.send(
-      new UpdateCommand({
-        TableName: requiredEnv("DELIVERIES_TABLE"),
-        Key: { deliveryId },
-        UpdateExpression:
-          "SET #status = :sent, sentAt = :sentAt, messageId = :messageId, segments = :segments, encoding = :encoding, " +
-          "latencyDetectToSendSec = :latency, simulatedReason = :reason",
-        ConditionExpression: "#status = :sending",
-        ExpressionAttributeNames: { "#status": "status" },
-        ExpressionAttributeValues: {
-          ":sent": "SENT",
-          ":sending": "SENDING",
-          ":sentAt": sentAt.toISOString(),
-          ":messageId": messageId,
-          ":segments": smsInfo.count,
-          ":encoding": smsInfo.encoding,
-          ":latency": Math.max(
-            0,
-            Math.round(
-              (sentAt.getTime() - Date.parse(delivery.createdAt)) / 1000,
-            ),
-          ),
-          ":reason": simulatedReason ?? "NONE",
-        },
-      }),
-    );
-    await updateStats(channel, delivery.runId, sentAt, deps);
-    deps.log.info("delivery_enviada", {
-      deliveryId,
-      subscriberId: delivery.subscriberId,
-      channel,
-    });
+    await recordSent(delivery, channel, messageId, simulatedReason, phone, deps);
   } catch (error) {
-    if (isPermanentSendError(error)) {
+    // Un SMS real nunca se reintenta (presupuesto sandbox ~1 USD/mes): cualquier error lo deja FAILED.
+    if (channel === "SMS" || isPermanentSendError(error)) {
       await markFailed(deliveryId, errorMessage(error), deps);
       return;
     }
@@ -243,12 +230,76 @@ async function processDelivery(
   }
 }
 
+/**
+ * Contabiliza un envío ya hecho. Nunca lanza hacia el catch de envío: si el mensaje salió,
+ * no debe marcarse FAILED ni reintentarse aunque falle la contabilidad.
+ */
+async function recordSent(
+  delivery: Delivery,
+  channel: Channel,
+  messageId: string,
+  simulatedReason: string | undefined,
+  phone: string | undefined,
+  deps: SenderDependencies,
+): Promise<void> {
+  const deliveryId = delivery.deliveryId;
+  const sentAt = deps.now();
+  const smsInfo = segments(delivery.text);
+  const values = {
+    ":sentAt": sentAt.toISOString(),
+    ":messageId": messageId,
+    ":segments": smsInfo.count,
+    ":encoding": smsInfo.encoding,
+    ":latency": Math.max(0, Math.round((sentAt.getTime() - Date.parse(delivery.createdAt)) / 1000)),
+    ":reason": simulatedReason ?? "NONE",
+    ":dest": phone ? maskPhone(phone) : "SIMULADO",
+  };
+  const fields =
+    "sentAt = :sentAt, messageId = :messageId, segments = :segments, encoding = :encoding, " +
+    "latencyDetectToSendSec = :latency, simulatedReason = :reason, destinationMasked = :dest";
+  try {
+    try {
+      await deps.ddb.send(
+        new UpdateCommand({
+          TableName: requiredEnv("DELIVERIES_TABLE"),
+          Key: { deliveryId },
+          UpdateExpression: `SET #status = :sent, ${fields}`,
+          ConditionExpression: "#status = :sending",
+          ExpressionAttributeNames: { "#status": "status" },
+          ExpressionAttributeValues: { ...values, ":sent": "SENT", ":sending": "SENDING" },
+        }),
+      );
+    } catch (error) {
+      if (!isConditionalFailure(error)) throw error;
+      // El evento de End User Messaging llegó antes: conservar su estado y guardar solo los datos.
+      await deps.ddb.send(
+        new UpdateCommand({
+          TableName: requiredEnv("DELIVERIES_TABLE"),
+          Key: { deliveryId },
+          UpdateExpression: `SET ${fields}`,
+          ExpressionAttributeValues: values,
+        }),
+      );
+    }
+    await updateStats(channel, delivery.runId, sentAt, deps);
+  } catch (error) {
+    deps.log.error("contabilidad_envio_fallida", { deliveryId, messageId, error: errorMessage(error) });
+  }
+  deps.log.info("delivery_enviada", {
+    deliveryId,
+    subscriberId: delivery.subscriberId,
+    channel,
+    messageId,
+  });
+}
+
 async function sendChannel(
   channel: Channel,
   delivery: Delivery,
   subscriber: SubscriberRecord,
   config: SenderConfig,
   deps: SenderDependencies,
+  phone?: string,
 ): Promise<string> {
   if (channel === "SIMULATED") return `simulated:${delivery.deliveryId}`;
   if (channel === "TELEGRAM") {
@@ -290,8 +341,10 @@ async function sendChannel(
     };
     return `telegram:${result.result?.message_id ?? "unknown"}`;
   }
-  if (!subscriber.phoneEnc) throw permanent("Suscriptor SMS sin phoneEnc");
-  const phone = await decryptPhone(subscriber.phoneEnc, deps);
+  // Última barrera antes de gastar: SMS_ENABLED y destino exacto en la allowlist.
+  if (!config.smsEnabled) throw permanent("SMS deshabilitado");
+  if (!phone || !config.smsAllowlist.has(phone))
+    throw permanent("Destino fuera de la allowlist: SMS rechazado");
   const output: SendTextMessageCommandOutput = await deps.sms.send(
     new SendTextMessageCommand({
       DestinationPhoneNumber: phone,
@@ -317,6 +370,7 @@ async function loadConfig(deps: SenderDependencies): Promise<SenderConfig> {
     "SMS_MAX_PRICE",
     "sms/allowlist",
     "telegram/botToken",
+    "secrets/phoneEncKey",
   ].map((name) => `${prefix}/${name}`);
   const response = await deps.ssm.send(
     new GetParametersCommand({ Names: names, WithDecryption: true }),
@@ -332,8 +386,9 @@ async function loadConfig(deps: SenderDependencies): Promise<SenderConfig> {
     smsEnabled: values.get(`${prefix}/SMS_ENABLED`) === "true",
     smsDailyCap: positiveInteger(values.get(`${prefix}/SMS_DAILY_CAP`), 30),
     smsMaxPrice: positiveDecimal(values.get(`${prefix}/SMS_MAX_PRICE`), "0.30"),
-    smsAllowlist: new Set(allowlist),
+    smsAllowlist: new Set(allowlist.filter((entry) => /^\+519\d{8}$/.test(entry))),
     telegramBotToken: values.get(`${prefix}/telegram/botToken`) || undefined,
+    phoneEncKey: values.get(`${prefix}/secrets/phoneEncKey`) || undefined,
   };
   configCache = { value, expiresAt: now + 60_000 };
   return value;
@@ -366,15 +421,22 @@ async function updateStats(
   const smsSent = channel === "SMS" ? 1 : 0;
   const statsPk =
     runId === "LIVE" ? "GLOBAL" : `RUN#${runId.replace(/^REPLAY#/, "")}`;
-  for (const statsSk of ["TOTAL", `DAY#${limaDate(now)}`]) {
+  const keys: Array<[string, string]> = [
+    [statsPk, "TOTAL"],
+    [statsPk, `DAY#${limaDate(now)}`],
+  ];
+  // El tope diario global de SMS cuenta también los SMS reales enviados desde un replay.
+  if (channel === "SMS" && statsPk !== "GLOBAL") keys.push(["GLOBAL", `DAY#${limaDate(now)}`]);
+  for (const [pk, statsSk] of keys) {
+    const onlySms = pk === "GLOBAL" && statsPk !== "GLOBAL";
     await deps.ddb.send(
       new UpdateCommand({
         TableName: requiredEnv("STATS_TABLE"),
-        Key: { statsPk, statsSk },
+        Key: { statsPk: pk, statsSk },
         UpdateExpression:
           "ADD sent :one, smsSent :smsSent, smsCostMicroUsd :cost SET updatedAt = :now",
         ExpressionAttributeValues: {
-          ":one": 1,
+          ":one": onlySms ? 0 : 1,
           ":smsSent": smsSent,
           ":cost": smsCost,
           ":now": now.toISOString(),
@@ -407,10 +469,15 @@ async function markFailed(
 
 async function decryptPhone(
   phoneEnc: string,
+  config: SenderConfig,
   deps: SenderDependencies,
 ): Promise<string> {
+  if (phoneEnc.startsWith("aes:")) {
+    if (!config.phoneEncKey) throw permanent("Falta secrets/phoneEncKey");
+    return decryptAesPhone(phoneEnc, config.phoneEncKey);
+  }
   if (!phoneEnc.startsWith("kms:"))
-    throw permanent("phoneEnc no está cifrado con KMS");
+    throw permanent("phoneEnc con formato desconocido");
   const response = await deps.kms.send(
     new DecryptCommand({
       CiphertextBlob: Buffer.from(phoneEnc.slice(4), "base64"),

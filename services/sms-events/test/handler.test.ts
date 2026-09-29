@@ -86,4 +86,16 @@ describe("eventos de End User Messaging", () => {
     ).mock.calls;
     expect(JSON.stringify(calls)).not.toContain("+51912345678");
   });
+
+  it("los eventos de un replay cuentan en RUN#<id>, no en producción", async () => {
+    ddbMock.on(UpdateCommand).callsFake((input) =>
+      input.TableName === "Deliveries" ? { Attributes: { runId: "REPLAY#R-9" } } : {},
+    );
+    await createSmsEventsHandler(deps())(
+      event(JSON.stringify({ eventType: "TEXT_DELIVERED", context: { deliveryId: "D9" } })),
+    );
+    const keys = ddbMock.commandCalls(UpdateCommand).map((call) => call.args[0].input.Key);
+    expect(keys).toContainEqual({ statsPk: "RUN#R-9", statsSk: "TOTAL" });
+    expect(keys).not.toContainEqual({ statsPk: "GLOBAL", statsSk: "TOTAL" });
+  });
 });

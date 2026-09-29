@@ -33,6 +33,16 @@ interface StoredWarning extends Omit<NormalizedWarning, "areas"> {
   s3Key: string;
   listLevelColor?: "AMARILLO" | "NARANJA" | "ROJO";
   replayRunId?: string;
+  simulatedNow?: string;
+  replayTargets?: string[];
+  replayRealSms?: string[];
+  replayStartedAt?: string;
+  detailUrl?: string;
+}
+
+interface SubscriberRow extends Subscriber {
+  phoneMasked?: string;
+  demoSeed?: boolean;
 }
 
 export interface MatcherDependencies {
@@ -104,20 +114,21 @@ async function matchWarning(
   const warningGroup = await Promise.all(
     storedGroup.map((warning) => hydrateWarning(warning, deps)),
   );
-  const subscriberResult = await deps.ddb.send(
-    new QueryCommand({
-      TableName: requiredEnv("SUBSCRIBERS_TABLE"),
-      IndexName: "byStatus",
-      KeyConditionExpression: "#status = :active",
-      ExpressionAttributeNames: { "#status": "status" },
-      ExpressionAttributeValues: { ":active": "ACTIVE" },
-    }),
-  );
-  const subscribers = (subscriberResult.Items ?? []) as Subscriber[];
   const replay = trigger.source === "REPLAY";
+  // Replay: solo los suscriptores que la API eligió (demo + visitante), nunca toda la base.
   const eligible = replay
-    ? subscribers.filter((subscriber) => subscriber.isDemo)
-    : subscribers;
+    ? await replayTargets(trigger, deps)
+    : (((
+        await deps.ddb.send(
+          new QueryCommand({
+            TableName: requiredEnv("SUBSCRIBERS_TABLE"),
+            IndexName: "byStatus",
+            KeyConditionExpression: "#status = :active",
+            ExpressionAttributeNames: { "#status": "status" },
+            ExpressionAttributeValues: { ":active": "ACTIVE" },
+          }),
+        )
+      ).Items ?? []) as SubscriberRow[]);
   for (const subscriber of eligible)
     await matchSubscriber(subscriber, warningGroup, trigger, deps);
   deps.log.info("warning_evaluado", {
@@ -126,8 +137,28 @@ async function matchWarning(
   });
 }
 
+async function replayTargets(
+  trigger: StoredWarning,
+  deps: MatcherDependencies,
+): Promise<SubscriberRow[]> {
+  const ids = [...new Set(trigger.replayTargets ?? [])].slice(0, 25);
+  if (ids.length === 0) return [];
+  const table = requiredEnv("SUBSCRIBERS_TABLE");
+  const result = await deps.ddb.send(
+    new BatchGetCommand({
+      RequestItems: { [table]: { Keys: ids.map((subscriberId) => ({ subscriberId })) } },
+    }),
+  );
+  const realSms = new Set(trigger.replayRealSms ?? []);
+  return ((result.Responses?.[table] ?? []) as SubscriberRow[]).filter(
+    (subscriber) =>
+      subscriber.status === "ACTIVE" &&
+      (subscriber.isDemo || (realSms.has(subscriber.subscriberId) && subscriber.channel === "SMS")),
+  );
+}
+
 async function matchSubscriber(
-  subscriber: Subscriber,
+  subscriber: SubscriberRow,
   warningGroup: NormalizedWarning[],
   trigger: StoredWarning,
   deps: MatcherDependencies,
@@ -184,7 +215,9 @@ async function matchSubscriber(
     alreadySentLevels,
     sentTodayToSubscriber: sentToday,
     globalSentToday: globalSmsToday,
-    now,
+    // Replay: las reglas se evalúan con la hora simulada (el aviso histórico ya venció);
+    // createdAt y latencias usan el reloj real.
+    now: trigger.source === "REPLAY" && trigger.simulatedNow ? new Date(trigger.simulatedNow) : now,
   });
   if (!decision.send || !decision.template || !decision.fechas) {
     await recordSkip(decision.reason ?? "outside_polygons", runId, now, deps);
@@ -197,12 +230,19 @@ async function matchSubscriber(
   let template: TemplateId = decision.template;
   let tmin: number | undefined;
   if (warningGroup[0]?.hazard === "HELADA" && template !== "SUBE_NIVEL") {
-    tmin = await deps.getTmin(subscriber.lat, subscriber.lon);
+    // En replay no hay pronóstico histórico de Tmin: no se inventa, se usa HELADA_SIN_TMIN.
+    tmin = trigger.source === "REPLAY" ? undefined : await deps.getTmin(subscriber.lat, subscriber.lon);
     template = tmin === undefined ? "HELADA_SIN_TMIN" : "HELADA";
   }
+  const allowRealSms =
+    trigger.source === "REPLAY" &&
+    subscriber.channel === "SMS" &&
+    (trigger.replayRealSms ?? []).includes(subscriber.subscriberId);
   const channel =
     trigger.source === "REPLAY"
-      ? "SIMULATED"
+      ? allowRealSms
+        ? "SMS"
+        : "SIMULATED"
       : (decision.channelOverride ?? subscriber.channel);
   const place =
     subscriber.centroPoblado ??
@@ -242,6 +282,25 @@ async function matchSubscriber(
     confirmCode,
     createdAt,
     capped: decision.capped ?? false,
+    // Datos para /c/:code y el panel (sin teléfono completo).
+    title: trigger.title,
+    color: LEVEL_COLOR[level as 2 | 3 | 4],
+    fechas: decision.fechas,
+    lugar: place,
+    ...(tmin === undefined ? {} : { tmin }),
+    year: trigger.year,
+    nroAviso: trigger.nroAviso,
+    fechaEmi: trigger.fechaEmi,
+    officialUrl: trigger.detailUrl ?? "https://www.senamhi.gob.pe/?p=aviso-meteorologico",
+    phoneMasked: subscriber.phoneMasked ?? "SIMULADO",
+    isDemoSeed: subscriber.demoSeed ?? false,
+    ...(trigger.source === "REPLAY"
+      ? {
+          allowRealSms,
+          ...(trigger.replayStartedAt ? { replayStartedAt: trigger.replayStartedAt } : {}),
+          ...(trigger.simulatedNow ? { simulatedNow: trigger.simulatedNow } : {}),
+        }
+      : {}),
     ttl: Math.floor(now.getTime() / 1000) + 30 * 24 * 60 * 60,
     ...(scheduleAt ? { scheduleAt } : {}),
   };

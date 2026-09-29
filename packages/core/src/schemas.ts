@@ -58,4 +58,8 @@ export const replayRequestSchema = z.strictObject({
   nroAviso: z.number().int().min(1).max(999),
   mapa: z.number().int().min(1).max(3).optional(),
   simulatedNow: z.iso.datetime().optional(),
+  /** Suscriptor "solo simulación" del visitante: su SMS simulado aparece en el teléfono virtual. */
+  subscriberId: z.string().regex(/^[0-9A-HJKMNP-TV-Z]{26}$/).optional(),
+  /** Solo con cabecera x-demo-key válida: suscriptor SMS que recibe el SMS real (sigue sujeto a SMS_ENABLED + allowlist). */
+  realSmsSubscriberId: z.string().regex(/^[0-9A-HJKMNP-TV-Z]{26}$/).optional(),
 });

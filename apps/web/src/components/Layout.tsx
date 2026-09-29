@@ -22,7 +22,8 @@ export function Nav() {
       </Link>
       <div className="nav-links">
         <Link href="/#como-funciona">{t.nav.how}</Link>
-        <Link href="/#estado">{t.nav.status}</Link>
+        <Link href="/#demo">{t.nav.demo}</Link>
+        <Link href="/panel">{t.nav.panel}</Link>
         <Link className="nav-cta" href="/registro">{t.nav.register}</Link>
         <LanguageToggle />
       </div>

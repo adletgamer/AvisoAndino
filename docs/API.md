@@ -42,6 +42,11 @@ Request:
 ```
 El bbox de Perú es un prefiltro aproximado. Opcional: una validación fina con el polígono del país.
 
+Comportamiento por canal:
+- `SIMULATED` ("solo simulación"): `status=ACTIVE`, `isDemo=true`, sin teléfono. **Nunca recibe SMS.** Su `subscriberId` puede pasarse a `POST /replay` para ver su propio SMS simulado.
+- `SMS`: se guardan `phoneHash` (HMAC-SHA256, clave SSM `secrets/phoneHmacKey`), `phoneEnc` (`aes:` AES-256-GCM, clave SSM `secrets/phoneEncKey`) y `phoneMasked`; nunca el número en claro. En el sandbox solo se aceptan números de `sms/allowlist` (verificados en AWS). No se envía SMS de bienvenida. La confirmación de cada aviso es por el enlace `/c/:code` del SMS ("Recibí el aviso"); el SMS en Perú es de una sola vía.
+- `TELEGRAM`: `status=PENDING` hasta `/start <activationCode>`; ahí sí se confirma respondiendo `1` o con el botón.
+
 Respuestas:
 - `201`: `{ "subscriberId": "01J9…", "status": "PENDING" | "ACTIVE", "next": { "type": "SMS_LINK" | "TELEGRAM_DEEPLINK" | "NONE", "telegramUrl": "https://t.me/AvisoAndinoBot?start=Q7M2PX" }, "phoneMasked": "+51 9•••••123" }`
 - `409 ALREADY_REGISTERED` (mismo `phoneHash`): no revela más datos. Se reenvía el enlace de alta como máximo 1 vez cada 24 h.
@@ -111,9 +116,15 @@ Request:
                   "simulatedNow": { "type": "string", "format": "date-time" } } }
 ```
 - Lista blanca configurable en SSM (`/aviso-andino/replay/allowlist`, p. ej. `["2026-230","2025-200","2026-388","2026-383"]`) para no convertir el endpoint en un proxy abierto del WFS.
-- Siempre usa suscriptores `isDemo=true` y canal `SIMULATED`. **Nunca envía SMS reales.**
-- `202`: `{ "runId": "R-01J9…", "status": "RUNNING", "pollUrl": "/api/metrics?runId=REPLAY%23R-01J9…" }`
-- Resultado: `GET /metrics?runId=REPLAY#…` y `GET /replay/{runId}/deliveries` (lista de mensajes simulados para el "teléfono virtual").
+- Campos extra: `subscriberId` (registro "solo simulación" del visitante) y `realSmsSubscriberId` (solo con cabecera `x-demo-key` igual a SSM `replay/demoKey`; si no, `403`).
+- Visitantes públicos: siempre canal `SIMULATED` (colegio demo `DEMO-IE40383` + su registro) y tope de 60 replays públicos por día (`429`).
+- Pipeline real: la API invoca `ingest` (modo replay, asíncrono) → snapshot oficial guardado en el repo (`fixtures/`; si no hay, lista + WFS de SENAMHI) → `Warnings` con prefijo `REPLAY#<runId>#` → cola match → reglas con `simulatedNow` (por defecto mediodía de Lima del día de emisión) → dedupe con clave por run → cola send → sender.
+- SMS real solo si además `SMS_ENABLED=true` y el número descifrado está en `sms/allowlist` (E.164 exacto). Nunca se reintenta.
+- `202`: `{ "runId": "R-01J9…", "status": "RUNNING", "mode": "SIMULATION" | "REAL_SMS", "pollUrl": "/api/replay/R-01J9…/deliveries", "metricsUrl": "/api/metrics?runId=REPLAY%23R-01J9…" }`
+- Resultado: `GET /replay/{runId}/deliveries[?subscriberId=]` → `{ meta, totals, items[] }` con el texto exacto de cada SMS, teléfono enmascarado, `latencyFromReplayStartSec` y `confirmCode` (solo mensajes simulados).
+
+## `GET /panel`
+Solo datos reales de DynamoDB: `production` (GLOBAL: enviados, confirmados, %, latencia publicación → SMS), `replay` (últimos 10 runs: enviados, confirmados, %, SMS reales, latencia desde el inicio del replay, últimos envíos) y `warning` (aviso del último replay). Valores ausentes = `null`/listas vacías, nunca números de ejemplo.
 
 ## `POST /telegram/webhook`
 - Header obligatorio `X-Telegram-Bot-Api-Secret-Token` == SSM `/aviso-andino/telegram/webhookSecret`; si no coincide → `401`.

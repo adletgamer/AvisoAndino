@@ -3,6 +3,8 @@ import { PageShell } from '../components/Layout';
 import { Phone } from '../components/Phone';
 import { useI18n } from '../i18n';
 import { welcomeSms } from '../sms';
+import { API_BASE, storeSubscriberId } from '../api';
+import { Link } from '../router';
 
 type Channel = 'SIMULATED' | 'TELEGRAM' | 'SMS';
 type Hazard = 'HELADA' | 'FRIAJE' | 'LLUVIA' | 'NEVADA';
@@ -22,7 +24,8 @@ export function Register() {
   const [consent, setConsent] = useState(false);
   const [website, setWebsite] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
-  const [state, setState] = useState<'idle' | 'sending' | 'ok' | 'unavailable' | 'failed'>('idle');
+  const [state, setState] = useState<'idle' | 'sending' | 'ok' | 'unavailable' | 'failed' | 'smsNotAvailable' | 'duplicate'>('idle');
+  const [result, setResult] = useState<{ channel: Channel; telegramUrl?: string } | null>(null);
 
   const useMyLocation = () => navigator.geolocation?.getCurrentPosition((p) => {
     setLat(p.coords.latitude.toFixed(4));
@@ -40,7 +43,7 @@ export function Register() {
     if (nextErrors.length) return;
     setState('sending');
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_BASE ?? '/api'}/subscribers`, {
+      const response = await fetch(`${API_BASE}/subscribers`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -53,7 +56,13 @@ export function Register() {
           website,
         }),
       });
-      if (response.ok) setState('ok');
+      if (response.ok) {
+        const body = (await response.json()) as { subscriberId: string; next?: { telegramUrl?: string } };
+        if (channel === 'SIMULATED') storeSubscriberId(body.subscriberId);
+        setResult({ channel, telegramUrl: body.next?.telegramUrl });
+        setState('ok');
+      } else if (response.status === 422) setState('smsNotAvailable');
+      else if (response.status === 409) setState('duplicate');
       else if ([404, 501, 503].includes(response.status)) setState('unavailable');
       else setState('failed');
     } catch {
@@ -87,6 +96,7 @@ export function Register() {
                 <small id="phone-hint">{r.phoneHint}. {r.smsNote}</small>
               </label>
             )}
+            {channel === 'TELEGRAM' && <p className="field-note">{r.telegramNote}</p>}
             <fieldset>
               <legend>{r.location}</legend>
               <label className="field"><span>{r.place}</span>
@@ -129,7 +139,15 @@ export function Register() {
             )}
             <button className="button" type="submit" disabled={state === 'sending'}>{state === 'sending' ? r.sending : r.submit}</button>
             <p className="form-result" aria-live="polite">
-              {state === 'ok' && r.success}
+              {state === 'ok' && result?.channel === 'SIMULATED' && (
+                <>{r.successSimulated} <Link href="/#demo">{r.tryDemo} →</Link></>
+              )}
+              {state === 'ok' && result?.channel === 'TELEGRAM' && (
+                <>{r.successTelegram} {result.telegramUrl && <a href={result.telegramUrl} rel="noreferrer">{r.openTelegram} ↗</a>}</>
+              )}
+              {state === 'ok' && result?.channel === 'SMS' && r.success}
+              {state === 'smsNotAvailable' && r.smsNotAvailable}
+              {state === 'duplicate' && r.alreadyRegistered}
               {state === 'unavailable' && r.unavailable}
               {state === 'failed' && r.failed}
             </p>
