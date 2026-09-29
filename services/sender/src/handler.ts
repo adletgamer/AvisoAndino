@@ -14,9 +14,13 @@ export async function handler(event: SQSEvent): Promise<SQSBatchResponse> {
   for (const record of event.Records) {
     try {
       const { deliveryId } = JSON.parse(record.body) as { deliveryId: string };
-      logger.info('send delivery', { deliveryId });
-      // TODO(prompt 03): PENDING->SENDING condicional, flags SSM, render/rewrite+validate, canal, update Delivery+Stats
-      throw new Error('TODO sender');
+      logger.info('send dry run', {
+        deliveryId,
+        smsEnabled: process.env.SMS_ENABLED === 'true',
+        rewriteEnabled: process.env.REWRITE_ENABLED === 'true',
+      });
+      // Seguro por defecto: el MVP nunca llama SMS ni Bedrock. Prompt 03 implementará
+      // las transiciones idempotentes, allowlist, topes y rewriteValidator.
     } catch (err) {
       logger.error('send failed', { err, messageId: record.messageId });
       batchItemFailures.push({ itemIdentifier: record.messageId });

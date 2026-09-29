@@ -24,7 +24,27 @@ export interface IngestResult {
 }
 
 export async function handler(event: IngestEvent): Promise<IngestResult> {
-  logger.info('ingest start', { mode: event.mode ?? 'scheduled' });
-  // TODO(prompt 02): lista -> WFS por nro/mapa -> normalize (core) -> dedup por contentHash -> S3 + DynamoDB -> SQS match-queue
-  throw new Error('TODO ingest handler');
+  const mode = event.mode ?? 'scheduled';
+  const enabled = process.env.INGEST_ENABLED === 'true';
+  logger.info('ingest invocation', { mode, enabled });
+
+  // El MVP despliega el flujo y su Scheduler, pero no activa una ingesta parcial:
+  // Prompt 02 añadirá parser, snapshots, deduplicación y fallback como una unidad testeada.
+  if (!enabled) {
+    logger.info('ingest disabled; safe dry run', { mode });
+    return {
+      avisosActivos: 0,
+      warningsNew: 0,
+      warningsChanged: 0,
+      source: mode === 'replay' ? 'REPLAY' : 'SENAMHI_WFS',
+    };
+  }
+
+  logger.warn('ingest enabled before Prompt 02 implementation; no external request was made', { mode });
+  return {
+    avisosActivos: 0,
+    warningsNew: 0,
+    warningsChanged: 0,
+    source: mode === 'replay' ? 'REPLAY' : 'SENAMHI_WFS',
+  };
 }
