@@ -426,7 +426,10 @@ export class AvisoAndinoStack extends Stack {
       });
     }
 
-    for (const fn of [ingest, matcher, sender, api, smsEvents]) {
+    const monitoredFunctions = smsEvents
+      ? [ingest, matcher, sender, api, smsEvents]
+      : [ingest, matcher, sender, api];
+    for (const fn of monitoredFunctions) {
       new cloudwatch.Alarm(this, `${fn.node.id}ErrorsAlarm`, {
         alarmName: `${rolePrefix}-${fn.node.id.toLowerCase()}-errors`,
         metric: fn.metricErrors({ period: Duration.minutes(5) }),
