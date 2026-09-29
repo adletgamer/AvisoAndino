@@ -2,9 +2,6 @@
 
 **El aviso oficial de SENAMHI, a tiempo, en un SMS claro, para el colegio rural que lo necesita.**
 
-> Proyecto para el hackathon **AWS Builder Center: Zero to Shipped** (#social-good #community). Construido con agentes de código (Claude Code / Codex / Cursor) conectados a AWS mediante el **Agent Toolkit for AWS**.
-> Estado: 🚧 kit de arranque. Este README se completa con URL, métricas y capturas reales (ver `prompts/07-submission-docs.md`).
-
 - 🌐 URL pública: `https://d2p62exvpg7lbb.cloudfront.net`
 - 🎥 Video (2–3 min): `<pendiente>`
 - 🧭 Arquitectura: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · ![arquitectura](docs/architecture.png)
