@@ -3,6 +3,7 @@
 **El aviso oficial de SENAMHI, a tiempo, en un SMS claro, para el colegio rural que lo necesita.**
 
 - 🌐 URL pública: `https://d2p62exvpg7lbb.cloudfront.net`
+- 🗣️ Idiomas: español (predeterminado) e inglés: botón **ES | EN** en la barra superior o `?lang=en`
 - 🎥 Video (2–3 min): `<pendiente>`
 - 🧭 Arquitectura: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · ![arquitectura](docs/architecture.png)
 
@@ -29,7 +30,7 @@
 ## Arquitectura (resumen)
 
 EventBridge Scheduler → Lambda `ingest` (SENAMHI WFS + lista; fallback INDECI ArcGIS) → S3 + DynamoDB → SQS → Lambda `matcher` (Turf, punto en polígono, reglas, dedup, Open-Meteo para Tmin) → SQS → Lambda `sender` (plantilla GSM-7, Bedrock opcional) → **End User Messaging SMS** / Telegram / simulado → confirmación por enlace (CloudFront + HTTP API) → DynamoDB → panel.
-Todo en **una stack de AWS CDK (TypeScript)** en `us-east-1`. Detalle, diagramas y buenas prácticas en [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Stack y justificación en [`docs/STACK.md`](docs/STACK.md).
+Todo en AWS CDK (TypeScript) en `us-east-1`, con **dos stacks y una sola URL**: `AvisoAndino-<stage>` (backend: API, tablas, colas, Lambdas) y `AvisoAndino-web-<stage>` (CloudFront + S3 privado con OAC, que además enruta `/api/*` al HTTP API). Ver [Despliegue dev](#despliegue-dev-dos-stacks-una-sola-url). Detalle, diagramas y buenas prácticas en [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Stack y justificación en [`docs/STACK.md`](docs/STACK.md).
 
 ## Estructura del repo
 
@@ -40,8 +41,8 @@ prompts/                00..07 prompts de arranque listos para pegar
 fixtures/               respuestas reales recortadas (SENAMHI, INDECI, Open-Meteo, MINEDU)
 packages/core           lógica pura: niveles, fenómenos, GSM-7, plantillas, geo, reglas, validador
 services/*              Lambdas: ingest, matcher, sender, api, sms-events
-infra/                  CDK app
-apps/web                Vite + React + Leaflet
+infra/                  CDK app (stack backend + stack web)
+apps/web                Vite + React · i18n ES/EN · hero 3D (three.js, carga diferida)
 scripts/                fixtures, seed demo, prueba CloudTrail
 ```
 
