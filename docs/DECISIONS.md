@@ -11,5 +11,6 @@
 | 8 | Replay principal: aviso 230/2026 (ROJO, heladas) | Tiene Nivel 1–4 y colegios rurales dentro de Nivel 3 | 2026-09-28 |
 | 9 | El primer deploy deja `scheduleEnabled=false`, `INGEST_ENABLED=false`, `SMS_ENABLED=false` y `REWRITE_ENABLED=false` | La infraestructura y los consumidores quedan cableados, pero ninguna integración externa se activa antes de completar y probar los prompts 02/03 | 2026-09-29 |
 | 10 | El synth sin `apps/web/dist` despliega una página de respaldo; el comando de deploy siempre compila la web primero | Permite que CI ejecute `pnpm synth` desde un clon limpio sin guardar artefactos generados | 2026-09-29 |
+| 11 | En dev, una Lambda propia vacía ambos buckets al borrar la stack | Conserva el comportamiento de `autoDeleteObjects`, pero permite que su rol explícito use el prefijo `zts-` exigido por `iam:PassRole` | 2026-09-29 |
 
 Caso de Soporte SMS (production access + gasto): `#<pendiente>`

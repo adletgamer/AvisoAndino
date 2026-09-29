@@ -7,7 +7,7 @@ function synthTemplate(): Template {
   const app = new App({ context: { stage: 'dev', scheduleEnabled: false } });
   const stack = new AvisoAndinoStack(app, 'AvisoAndino-dev', {
     stage: 'dev',
-    env: { account: '5290XXXXXXXX', region: 'us-east-1' },
+    env: { region: 'us-east-1' },
   });
   return Template.fromStack(stack);
 }
@@ -24,9 +24,12 @@ describe('AvisoAndinoStack', () => {
 
   it('crea las cinco Lambdas de aplicación en Node 24 arm64', () => {
     const template = synthTemplate();
+    const applicationNames = new Set(['ingest', 'matcher', 'sender', 'api', 'sms-events']);
     const functions = Object.values(template.findResources('AWS::Lambda::Function'))
       .map((resource) => resource.Properties as Record<string, unknown>)
-      .filter((properties) => String(properties.FunctionName ?? '').startsWith('zts-aviso-andino-dev-'));
+      .filter((properties) => applicationNames.has(
+        String(properties.FunctionName ?? '').replace('zts-aviso-andino-dev-', ''),
+      ));
 
     expect(functions).toHaveLength(5);
     for (const properties of functions) {

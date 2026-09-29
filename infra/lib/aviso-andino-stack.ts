@@ -1,9 +1,11 @@
 import path from 'node:path';
 import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import {
   Arn,
   ArnFormat,
   CfnOutput,
+  CustomResource,
   Duration,
   Fn,
   RemovalPolicy,
@@ -56,8 +58,10 @@ export class AvisoAndinoStack extends Stack {
     super(scope, id, props);
 
     const isDev = props.stage === 'dev';
+    const scheduleEnabledContext = this.node.tryGetContext('scheduleEnabled');
+    const scheduleEnabled = scheduleEnabledContext === true || scheduleEnabledContext === 'true';
     const removalPolicy = isDev ? RemovalPolicy.DESTROY : RemovalPolicy.RETAIN;
-    const root = path.join(process.cwd(), '..');
+    const root = fileURLToPath(new URL('../..', import.meta.url));
     const lockFile = path.join(root, 'pnpm-lock.yaml');
     const rolePrefix = `zts-aviso-andino-${props.stage}`;
 
@@ -66,7 +70,7 @@ export class AvisoAndinoStack extends Stack {
       partitionKey: { name: 'subscriberId', type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       timeToLiveAttribute: 'ttl',
-      pointInTimeRecovery: true,
+      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
       removalPolicy,
     });
     subscribers.addGlobalSecondaryIndex({
@@ -89,7 +93,7 @@ export class AvisoAndinoStack extends Stack {
       partitionKey: { name: 'warningId', type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       timeToLiveAttribute: 'ttl',
-      pointInTimeRecovery: true,
+      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
       removalPolicy,
     });
     warnings.addGlobalSecondaryIndex({
@@ -108,7 +112,7 @@ export class AvisoAndinoStack extends Stack {
       partitionKey: { name: 'deliveryId', type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       timeToLiveAttribute: 'ttl',
-      pointInTimeRecovery: true,
+      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
       removalPolicy,
     });
     for (const [indexName, partitionKey, sortKey] of [
@@ -130,7 +134,7 @@ export class AvisoAndinoStack extends Stack {
       sortKey: { name: 'statsSk', type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       timeToLiveAttribute: 'ttl',
-      pointInTimeRecovery: true,
+      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
       removalPolicy,
     });
 
@@ -138,7 +142,6 @@ export class AvisoAndinoStack extends Stack {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       encryption: s3.BucketEncryption.S3_MANAGED,
       enforceSSL: true,
-      autoDeleteObjects: isDev,
       removalPolicy,
       lifecycleRules: [{ id: 'expire-live-snapshots', prefix: 'snapshots/', expiration: Duration.days(30) }],
     });
@@ -146,12 +149,45 @@ export class AvisoAndinoStack extends Stack {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       encryption: s3.BucketEncryption.S3_MANAGED,
       enforceSSL: true,
-      autoDeleteObjects: isDev,
       removalPolicy,
     });
 
-    const matchDlq = this.queue('MatchDlq', `${rolePrefix}-match-dlq`, Duration.days(14));
-    const sendDlq = this.queue('SendDlq', `${rolePrefix}-send-dlq`, Duration.days(14));
+    if (isDev) {
+      const bucketCleaner = this.nodeFunction(
+        'BucketCleaner',
+        'bucket-cleaner',
+        128,
+        60,
+        { STAGE: props.stage },
+        root,
+        lockFile,
+      );
+      bucketCleaner.addToRolePolicy(new iam.PolicyStatement({
+        actions: ['s3:ListBucket'],
+        resources: [snapshotsBucket.bucketArn, webBucket.bucketArn],
+      }));
+      bucketCleaner.addToRolePolicy(new iam.PolicyStatement({
+        actions: ['s3:DeleteObject', 's3:DeleteObjectVersion'],
+        resources: [snapshotsBucket.arnForObjects('*'), webBucket.arnForObjects('*')],
+      }));
+      bucketCleaner.addPermission('CloudFormationInvoke', {
+        principal: new iam.ServicePrincipal('cloudformation.amazonaws.com'),
+        sourceAccount: this.account,
+      });
+      for (const [bucket, cleanId] of [
+        [snapshotsBucket, 'CleanSnapshotsOnDelete'],
+        [webBucket, 'CleanWebOnDelete'],
+      ] as const) {
+        new CustomResource(this, cleanId, {
+          resourceType: 'Custom::ZtsEmptyBucket',
+          serviceToken: bucketCleaner.functionArn,
+          properties: { BucketName: bucket.bucketName },
+        });
+      }
+    }
+
+    const matchDlq = this.queue('MatchDlq', `${rolePrefix}-match-dlq`, Duration.seconds(30));
+    const sendDlq = this.queue('SendDlq', `${rolePrefix}-send-dlq`, Duration.seconds(30));
     const matchQueue = this.queue('MatchQueue', `${rolePrefix}-match`, Duration.minutes(6), {
       queue: matchDlq,
       maxReceiveCount: 3,
@@ -272,7 +308,7 @@ export class AvisoAndinoStack extends Stack {
       description: 'Revisa avisos oficiales cada 15 minutos; la ingesta inicia desactivada.',
       schedule: scheduler.ScheduleExpression.rate(Duration.minutes(15)),
       target: new schedulerTargets.LambdaInvoke(ingest, { role: schedulerRole }),
-      enabled: this.node.tryGetContext('scheduleEnabled') === true,
+      enabled: scheduleEnabled,
     });
 
     const apiIntegration = new HttpLambdaIntegration('ApiIntegration', api);
@@ -347,6 +383,13 @@ export class AvisoAndinoStack extends Stack {
     });
 
     const webDist = path.join(root, 'apps/web/dist');
+    const deploymentRole = new iam.Role(this, 'WebDeploymentRole', {
+      roleName: `${rolePrefix}-web-deploy`,
+      assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'),
+      ],
+    });
     new s3deploy.BucketDeployment(this, 'DeployWeb', {
       sources: existsSync(webDist)
         ? [s3deploy.Source.asset(webDist)]
@@ -356,6 +399,7 @@ export class AvisoAndinoStack extends Stack {
       distributionPaths: ['/*'],
       prune: true,
       retainOnDelete: !isDev,
+      role: deploymentRole,
     });
 
     const parameters: Record<string, string> = {
@@ -399,15 +443,6 @@ export class AvisoAndinoStack extends Stack {
         budgetLimit: { amount: 10, unit: 'USD' },
       },
     });
-
-    // CDK providers (bucket deployment and auto-delete) also receive zts-* names.
-    let generatedRoleIndex = 0;
-    for (const child of this.node.findAll()) {
-      if (child instanceof iam.CfnRole && !child.roleName) {
-        generatedRoleIndex += 1;
-        child.roleName = `${rolePrefix}-provider-${generatedRoleIndex}`;
-      }
-    }
 
     new CfnOutput(this, 'Stage', { value: props.stage });
     new CfnOutput(this, 'WebUrl', { value: `https://${distribution.distributionDomainName}` });
