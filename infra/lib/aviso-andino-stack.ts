@@ -361,11 +361,16 @@ export class AvisoAndinoStack extends Stack {
       [apigwv2.HttpMethod.POST, '/api/telegram/webhook'],
       [apigwv2.HttpMethod.DELETE, '/api/subscribers/{subscriberId}'],
     ];
+    const createdRoutes: apigwv2.HttpRoute[] = [];
     for (const [method, routePath] of routes) {
-      httpApi.addRoutes({ path: routePath, methods: [method], integration: apiIntegration });
+      createdRoutes.push(...httpApi.addRoutes({ path: routePath, methods: [method], integration: apiIntegration }));
     }
     const defaultStage = httpApi.defaultStage?.node.defaultChild as apigwv2.CfnStage | undefined;
     if (defaultStage) {
+      // RouteSettings referencia rutas por clave: el Stage debe crearse después de ellas.
+      for (const route of createdRoutes) {
+        defaultStage.node.addDependency(route);
+      }
       defaultStage.defaultRouteSettings = { throttlingBurstLimit: 10, throttlingRateLimit: 5 };
       defaultStage.routeSettings = {
         'POST /api/replay': { ThrottlingBurstLimit: 2, ThrottlingRateLimit: 1 },
