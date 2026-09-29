@@ -21,6 +21,7 @@ import {
 import { fetchAvisoList, type AvisoRow } from "./senamhiList.js";
 import { fetchAvisoMap } from "./senamhiWfs.js";
 import { fetchIndeci } from "./indeci.js";
+import { loadListRow, loadMap } from "./replaySnapshots.js";
 
 const logger = new Logger({ serviceName: "ingest" });
 const metrics = new Metrics({
@@ -42,6 +43,11 @@ export type IngestEvent =
       mapa?: number;
       runId: string;
       simulatedNow?: string;
+      /** Suscriptores a evaluar (demo + visitante). */
+      targets?: string[];
+      /** Subconjunto autorizado con x-demo-key para SMS real (sender vuelve a validar). */
+      realSmsTargets?: string[];
+      startedAt?: string;
     };
 
 export interface IngestResult {
@@ -62,6 +68,8 @@ export interface IngestDependencies {
     year: number,
   ) => Promise<WarningCollection | null>;
   fetchFallback: () => Promise<WarningCollection>;
+  loadReplayRow?: (nro: number, year: number) => AvisoRow | undefined;
+  loadReplayMap?: (nro: number, mapa: number, year: number) => WarningCollection | undefined;
   now: () => Date;
   hash: (value: string) => string;
   log: Pick<Logger, "info" | "warn" | "error">;
@@ -81,6 +89,8 @@ const defaultDependencies: IngestDependencies = {
   fetchList: () => fetchAvisoList(),
   fetchMap: (nro, mapa, year) => fetchAvisoMap(nro, mapa, year),
   fetchFallback: () => fetchIndeci(),
+  loadReplayRow: (nro, year) => loadListRow(nro, year),
+  loadReplayMap: (nro, mapa, year) => loadMap(nro, mapa, year),
   now: () => new Date(),
   hash: (value) => createHash("sha256").update(value).digest("hex"),
   log: logger,
@@ -92,7 +102,12 @@ export function createIngestHandler(
 ) {
   return async (event: IngestEvent = {}): Promise<IngestResult> => {
     const mode = event.mode ?? 'scheduled';
-    const enabled = deps !== defaultDependencies || process.env.INGEST_ENABLED === 'true';
+    // El replay (invocado solo por la API) funciona con la ingesta programada apagada.
+    const enabled =
+      deps !== defaultDependencies ||
+      (mode === 'replay'
+        ? process.env.REPLAY_ENABLED !== 'false'
+        : process.env.INGEST_ENABLED === 'true');
     deps.log.info('inicio_ingesta', { mode, enabled });
     if (!enabled) {
       deps.log.info('ingesta_deshabilitada', { mode });
@@ -202,23 +217,32 @@ async function ingestReplay(
   ) {
     throw new Error("Evento replay inválido");
   }
-  const maps = event.mapa ? [event.mapa] : [1, 2, 3];
-  const outcomes = await mapPool(maps, 3, async (mapa) => {
-    const collection = await deps.fetchMap(event.nroAviso, mapa, event.year);
-    if (!collection) return undefined;
-    const row: AvisoRow = {
-      nro: event.nroAviso,
-      year: event.year,
-      status: "vigente",
-      title: `AVISO SENAMHI ${event.nroAviso}`,
-      emision: `${event.year}-01-01`,
-      inicio: `${event.year}-01-01`,
-      fin: `${event.year}-01-01`,
-      color: "NARANJA",
-    };
+  // 1) Snapshot real guardado en el repo (fila oficial de la lista + mapa WFS).
+  // 2) Si no existe: fuente oficial (lista SENAMHI + WFS), igual que la ingesta. Nunca se inventan datos.
+  const requested = event.mapa ? [event.mapa] : [1, 2, 3];
+  let row = deps.loadReplayRow?.(event.nroAviso, event.year);
+  let source: "snapshot" | "official" = "snapshot";
+  let maps: Array<{ mapa: number; collection: WarningCollection }> = [];
+  if (row) {
+    maps = requested
+      .map((mapa) => ({ mapa, collection: deps.loadReplayMap?.(event.nroAviso, mapa, event.year) }))
+      .filter((entry): entry is { mapa: number; collection: WarningCollection } => Boolean(entry.collection));
+  }
+  if (!row || maps.length === 0) {
+    source = "official";
+    row = (await deps.fetchList()).find((candidate) => candidate.nro === event.nroAviso && candidate.year === event.year);
+    if (!row) throw new Error(`Aviso ${event.year}-${event.nroAviso} no está en la lista oficial de SENAMHI`);
+    const fetched = await mapPool(requested, 3, async (mapa) => ({ mapa, collection: await deps.fetchMap(event.nroAviso, mapa, event.year) }));
+    maps = fetched.filter((entry): entry is { mapa: number; collection: WarningCollection } => Boolean(entry.collection));
+    if (maps.length === 0) throw new Error(`WFS sin mapas para ${event.year}-${event.nroAviso}`);
+  }
+  const listRow = row;
+  const simulatedNow = event.simulatedNow ?? `${listRow.emision}T17:00:00.000Z`; // mediodía Lima del día de emisión
+  deps.log.info("replay_datos", { runId: event.runId, source, maps: maps.map((entry) => entry.mapa), simulatedNow });
+  const outcomes = await mapPool(maps, 3, async ({ collection }) => {
     const normalized = normalizeWfs(
       collection as Parameters<typeof normalizeWfs>[0],
-      row,
+      listRow,
       deps.hash,
     );
     const prefix = `REPLAY#${event.runId}#`;
@@ -228,7 +252,13 @@ async function ingestReplay(
       avisoKey: `${prefix}${normalized.avisoKey}`,
       source: "REPLAY",
     };
-    return persistWarning(warning, collection, row.color, event.runId, deps);
+    return persistWarning(warning, collection, listRow.color, event.runId, deps, {
+      simulatedNow,
+      replayTargets: event.targets ?? [],
+      replayRealSms: event.realSmsTargets ?? [],
+      replayStartedAt: event.startedAt ?? deps.now().toISOString(),
+      replayDataSource: source,
+    });
   });
   return summarize(1, outcomes, "REPLAY");
 }
@@ -241,6 +271,7 @@ async function persistWarning(
   listLevelColor: AvisoRow["color"] | undefined,
   replayRunId: string | undefined,
   deps: IngestDependencies,
+  replayExtra: Record<string, unknown> = {},
 ): Promise<PersistOutcome> {
   const tableName = requiredEnv("WARNINGS_TABLE");
   const bucket = requiredEnv("SNAPSHOTS_BUCKET");
@@ -282,11 +313,12 @@ async function persistWarning(
         s3Key,
         firstSeenAt: existing.Item?.firstSeenAt ?? now,
         updatedAt: now,
-        activeFlag: "1",
+        // Los replays no son avisos vigentes: no aparecen en GET /alerts.
+        ...(replayRunId ? {} : { activeFlag: "1" }),
         detailUrl: "https://www.senamhi.gob.pe/?p=aviso-meteorologico",
         ttl: Math.floor(deps.now().getTime() / 1000) + 90 * 24 * 60 * 60,
         ...(listLevelColor ? { listLevelColor } : {}),
-        ...(replayRunId ? { replayRunId } : {}),
+        ...(replayRunId ? { replayRunId, ...replayExtra } : {}),
       },
     }),
   );

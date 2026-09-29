@@ -63,11 +63,11 @@ Cobertura del core (29-sep-2026): **90,04 % statements / 95,23 % lines** con
 ## Despliegue (lo hace el agente, vía Agent Toolkit for AWS)
 
 1. Requisitos: AWS CLI ≥ 2.35.0, `aws configure agent-toolkit` (o el banner "Get setup prompt" de Console Home) y el plugin `aws-core` en tu agente ([guía](https://builder.aws.com/content/3JQdUYne1ujIvtoLgWiV7iBGklF/connect-your-ai-coding-agent-to-aws), [repo](https://github.com/aws/agent-toolkit-for-aws)).
-2. Secretos a mano en SSM (SecureString): `/aviso-andino/prod/telegram/botToken`, `/aviso-andino/prod/telegram/webhookSecret`, `/aviso-andino/prod/phoneHmacKey`.
+2. Secretos a mano en SSM (SecureString; CloudFormation no crea SecureString): `/aviso-andino/prod/telegram/botToken`, `/aviso-andino/prod/telegram/webhookSecret`, `/aviso-andino/prod/secrets/phoneHmacKey` y `/aviso-andino/prod/secrets/phoneEncKey` (32 bytes en base64: `openssl rand -base64 32`) y `/aviso-andino/prod/replay/demoKey` (`openssl rand -hex 24`).
 3. `pnpm lint && pnpm test && pnpm synth` → `pnpm diff -- -c stage=prod` → `pnpm run deploy -c stage=prod -c alarmEmail=<tu email> -c publicBaseUrl=<WebUrl>` y luego `pnpm run deploy:web -c stage=prod -c apiOriginDomain=<ApiDomain>`.
 4. Registrar el webhook de Telegram: `https://api.telegram.org/bot<token>/setWebhook?url=<WebUrl>/api/telegram/webhook&secret_token=<secret>`.
 5. `pnpm seed:demo --stage prod`.
-6. Para SMS reales: verificar tu número en la consola de End User Messaging (sandbox), añadir su hash a `/aviso-andino/prod/sms/allowlist` y poner `SMS_ENABLED=true`.
+6. Para SMS reales: desplegar con `-c smsInfra=true`, verificar tu número en la consola de End User Messaging (sandbox), poner el número **E.164 exacto** en `/aviso-andino/prod/sms/allowlist` (p. ej. `["+519XXXXXXXX"]`) y `SMS_ENABLED=true` (ver [Encender y apagar el SMS real](#encender-y-apagar-el-sms-real)). El sender rechaza cualquier otro destino.
 
 ## Despliegue dev: dos stacks, una sola URL
 
@@ -79,7 +79,7 @@ Flags de CDK (todas con valor seguro por defecto):
 
 | Flag | Default | Efecto |
 |---|---|---|
-| `smsInfra` | `false` | Omite ConfigurationSet/ProtectConfiguration SMS, SNS de eventos y Lambda `sms-events` |
+| `smsInfra` | `false` | Con `true` crea ConfigurationSet + ProtectConfiguration (solo PE), SNS de eventos y Lambda `sms-events`. Dev está desplegado con `true` (el SMS sigue apagado por `SMS_ENABLED`) |
 | `scheduleEnabled` | `false` | Scheduler de ingesta creado en estado `DISABLED` |
 | `webDist` | `false` | Bucket/CloudFront propios de la stack completa (legado) |
 | `publicBaseUrl` | `''` | URL pública para los enlaces de los mensajes (`PUBLIC_BASE_URL` del matcher) |
@@ -91,8 +91,8 @@ Flags de CDK (todas con valor seguro por defecto):
 export PATH=$HOME/.local/node24/bin:$PATH            # Node 24
 export AWS_PROFILE=grokbot-dev AWS_REGION=us-east-1 AWS_DEFAULT_REGION=us-east-1 CDK_DEFAULT_REGION=us-east-1
 
-# 1) Backend (API, tablas, colas, Lambdas; SMS apagado, Scheduler deshabilitado)
-pnpm run deploy -c stage=dev -c scheduleEnabled=false -c smsInfra=false \
+# 1) Backend (API, tablas, colas, Lambdas, infra SMS; SMS_ENABLED=false, Scheduler deshabilitado)
+pnpm run deploy -c stage=dev -c scheduleEnabled=false -c smsInfra=true \
   -c webDist=false -c publicBaseUrl=https://d2p62exvpg7lbb.cloudfront.net --require-approval never
 #    -> salida ApiDomain, p. ej. fxsuf6txx2.execute-api.us-east-1.amazonaws.com
 
@@ -108,11 +108,34 @@ Nota: usa `pnpm run deploy`, no `pnpm deploy` (este último es un comando propio
 
 ## Guion de demo (3 min en vivo)
 
-1. **Panel** (`/panel`): avisos vigentes reales de SENAMHI en el mapa y hora de la última ingesta.
-2. **Registro** en el celular: buscar "70805 Charamaya" (Puno), canal SMS o Telegram.
-3. **Replay** (`/replay`) "Heladas ROJO junio 2026 (Aviso 230)": los puntos demo se colorean y aparecen los SMS en el teléfono virtual; confirmar uno sube el %.
-4. **SMS real**: mostrar en el celular el SMS recibido de un aviso vigente o de un replay con allowlist, tocar el enlace y confirmar. El panel se actualiza.
-5. **Por dentro**: diagrama, "la IA no decide" (validador), CloudTrail con eventos del AWS MCP Server.
+1. **Registro** (`/registro`): canal **Solo ver simulación** (nunca envía SMS), ubicación por defecto en Puno (dentro del aviso 230). El navegador guarda tu `subscriberId` para la demo.
+2. **Replay** (inicio → sección **Demo en vivo**, `/#demo`): botón **Reproducir aviso 230 (heladas, jun 2026)**. Recorre el pipeline real: snapshot oficial → reglas → dedupe (clave por run) → SQS → sender. El teléfono virtual muestra **el SMS exacto** que generó (el tuyo si tu punto cae en la zona, si no el del colegio demo 40383 de Huambo) y la latencia desde que presionaste el botón.
+3. **Confirmar por enlace**: botón **Recibí el aviso** (abre `/c/<código>`, lo mismo que el enlace del SMS). En Perú el SMS es de una sola vía: **no se responde "1" por SMS**; "responder 1" solo aplica a Telegram.
+4. **Panel** (`/panel`, ES/EN): enviados, confirmados, % de confirmación, últimos envíos con teléfonos enmascarados y el aviso del último replay. La sección **REPLAY** (latencia desde el inicio del replay) va separada de **Producción** (publicación → SMS), que está vacía mientras la ingesta automática siga apagada.
+5. **SMS real** (opcional, para la grabación): encender el SMS, lanzar un replay con la clave de demo y apagarlo (abajo).
+6. **Por dentro**: diagrama, "la IA no decide" (validador), CloudTrail con eventos del AWS MCP Server.
+
+### Encender y apagar el SMS real
+
+El SMS real exige **las tres** cosas: `SMS_ENABLED=true`, destino E.164 exacto en `sms/allowlist` y un replay lanzado con la cabecera `x-demo-key` (los visitantes públicos solo obtienen simulación y tienen un tope diario de replays). Un SMS real nunca se reintenta. El sender guarda la config en caché 60 s: espera 1 minuto después de cambiarla.
+
+```bash
+P="--region us-east-1"   # + --profile si hace falta
+# Encender (sandbox: solo el número verificado)
+aws ssm put-parameter --name /aviso-andino/dev/sms/allowlist --type String --overwrite --value '["+519XXXXXXXX"]' $P
+aws ssm put-parameter --name /aviso-andino/dev/SMS_ENABLED --type String --overwrite --value true $P
+
+# Replay con SMS real al suscriptor SMS registrado (su subscriberId lo devuelve POST /api/subscribers)
+KEY=$(aws ssm get-parameter --name /aviso-andino/dev/replay/demoKey --with-decryption --query Parameter.Value --output text $P)
+curl -s -X POST https://d2p62exvpg7lbb.cloudfront.net/api/replay -H 'content-type: application/json' \
+  -H "x-demo-key: $KEY" -d '{"year":2026,"nroAviso":230,"realSmsSubscriberId":"<subscriberId SMS>"}'
+
+# Apagar (y verificar)
+aws ssm put-parameter --name /aviso-andino/dev/SMS_ENABLED --type String --overwrite --value false $P
+curl -s https://d2p62exvpg7lbb.cloudfront.net/api/status   # "smsEnabled": false
+```
+
+Cada SMS a Perú cuesta USD 0,23252; el sandbox tiene un tope de USD 1/mes (unos 4 SMS).
 
 ## Costo estimado (piloto, al mes)
 
@@ -124,7 +147,7 @@ Nota: usa `pnpm run deploy`, no `pnpm deploy` (este último es un comando propio
 | EventBridge Scheduler                                            | USD 0 (14 M invocaciones gratis al mes) **[verificar en la página de precios]**                                                                                                           |
 | CloudWatch (logs de 14 días, ≤10 alarmas)                        | < USD 0,50                                                                                                                                                                                |
 | Bedrock Nova Micro (si se activa, un rewrite cacheado por aviso) | < USD 0,05 **[precio no verificado]**                                                                                                                                                     |
-| KMS CMK (opcional para cifrar teléfonos)                         | USD 1                                                                                                                                                                                     |
+| Cifrado de teléfonos (AES-256-GCM con clave en SSM SecureString; sin CMK de KMS) | USD 0                                                                                                                                                                      |
 | Telegram, Open-Meteo (uso no comercial), SSM estándar            | USD 0                                                                                                                                                                                     |
 | **Total sin SMS**                                                | **≈ USD 1–2**                                                                                                                                                                             |
 

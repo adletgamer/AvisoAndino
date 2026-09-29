@@ -1,8 +1,26 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useI18n } from '../i18n';
 
 /** Teléfono simulado. El SMS se muestra tal cual (español, GSM-7); en EN se añade una traducción aparte. */
-export function Phone({ sms, caption, animate = true }: { sms: string; caption?: string; animate?: boolean }) {
+export function Phone({
+  sms,
+  caption,
+  animate = true,
+  pending = false,
+  note,
+  time,
+  children,
+}: {
+  sms: string;
+  caption?: string;
+  animate?: boolean;
+  /** Esperando al pipeline: muestra "escribiendo…" sin burbuja. */
+  pending?: boolean;
+  /** Reemplaza la nota "Simulación: …" (p. ej. SMS real enviado). */
+  note?: string;
+  time?: string;
+  children?: ReactNode;
+}) {
   const { t, locale } = useI18n();
   const [run, setRun] = useState(0);
   const [arrived, setArrived] = useState(!animate);
@@ -21,22 +39,23 @@ export function Phone({ sms, caption, animate = true }: { sms: string; caption?:
         <div className="phone-screen">
           <div className="phone-status" aria-hidden="true"><span>9:41</span><span>▂▄▆ 4G</span></div>
           <p className="phone-sender">{t.phone.sender}</p>
-          {!arrived && <div className="typing" aria-hidden="true"><i /><i /><i /></div>}
-          {arrived && (
-            <div key={run} className="sms-bubble" lang="es">
+          {(pending || !arrived) && <div className="typing" aria-hidden="true"><i /><i /><i /></div>}
+          {!pending && arrived && sms && (
+            <div key={`${run}-${sms}`} className="sms-bubble" lang="es" data-testid="sms-bubble">
               <p>{sms}</p>
-              <time>{t.phone.now}</time>
+              <time>{time ?? t.phone.now}</time>
             </div>
           )}
         </div>
       </div>
       <figcaption>
-        <p className="sms-counter">{t.phone.counter([...sms].length)}</p>
-        {locale === 'en' && caption && (
+        {!pending && sms && <p className="sms-counter">{t.phone.counter([...sms].length)}</p>}
+        {!pending && locale === 'en' && caption && (
           <p className="sms-caption" lang="en"><strong>{t.phone.captionLabel}</strong> {caption}</p>
         )}
-        <p className="sms-sim">{t.phone.simulated}</p>
-        {animate && (
+        <p className="sms-sim">{note ?? t.phone.simulated}</p>
+        {children}
+        {animate && !children && (
           <button type="button" className="button ghost small" onClick={() => setRun((n) => n + 1)}>{t.phone.replay}</button>
         )}
       </figcaption>

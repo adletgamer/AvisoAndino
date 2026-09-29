@@ -44,29 +44,54 @@ export function createSmsEventsHandler(
       if (!parsed) continue;
       const status = statusFor(parsed.eventType);
       if (!status) continue;
-      await deps.ddb.send(
-        new UpdateCommand({
-          TableName: requiredEnv("DELIVERIES_TABLE"),
-          Key: { deliveryId: parsed.deliveryId },
-          UpdateExpression:
-            "SET #status = :status, providerEventAt = :now, providerEventType = :eventType",
-          ExpressionAttributeNames: { "#status": "status" },
-          ExpressionAttributeValues: {
-            ":status": status,
-            ":now": deps.now().toISOString(),
-            ":eventType": parsed.eventType,
-          },
-        }),
-      );
+      const now = deps.now().toISOString();
+      const details = eventDetails(payload);
+      let runId: unknown;
+      try {
+        const updated = await deps.ddb.send(
+          new UpdateCommand({
+            TableName: requiredEnv("DELIVERIES_TABLE"),
+            Key: { deliveryId: parsed.deliveryId },
+            // Nunca retrocede un estado final (p. ej. TEXT_SUCCESSFUL tardío tras TEXT_DELIVERED).
+            UpdateExpression:
+              "SET #status = :status, providerEventAt = :now, providerEventType = :eventType" +
+              (status === "DELIVERED" ? ", deliveredAt = :now" : "") +
+              (details.messageStatusDescription ? ", providerStatusDescription = :desc" : "") +
+              (details.totalMessagePrice !== undefined ? ", providerPriceUsd = :price" : ""),
+            ConditionExpression:
+              "attribute_exists(deliveryId) AND (attribute_not_exists(#status) OR NOT #status IN (:delivered, :failed))",
+            ExpressionAttributeNames: { "#status": "status" },
+            ExpressionAttributeValues: {
+              ":status": status,
+              ":now": now,
+              ":eventType": parsed.eventType,
+              ":delivered": "DELIVERED",
+              ":failed": "FAILED",
+              ...(details.messageStatusDescription ? { ":desc": details.messageStatusDescription } : {}),
+              ...(details.totalMessagePrice !== undefined ? { ":price": details.totalMessagePrice } : {}),
+            },
+            ReturnValues: "ALL_NEW",
+          }),
+        );
+        runId = updated.Attributes?.runId;
+      } catch (error) {
+        if ((error as { name?: string }).name === "ConditionalCheckFailedException") continue;
+        throw error;
+      }
       if (status === "DELIVERED" || status === "FAILED") {
+        // Métricas separadas: los SMS de un replay cuentan en RUN#<id>, no en producción.
+        const statsPk =
+          typeof runId === "string" && runId.startsWith("REPLAY#")
+            ? `RUN#${runId.slice("REPLAY#".length)}`
+            : "GLOBAL";
         await deps.ddb.send(
           new UpdateCommand({
             TableName: requiredEnv("STATS_TABLE"),
-            Key: { statsPk: "GLOBAL", statsSk: "TOTAL" },
+            Key: { statsPk, statsSk: "TOTAL" },
             UpdateExpression: `ADD ${status === "DELIVERED" ? "delivered" : "failed"} :one SET updatedAt = :now`,
             ExpressionAttributeValues: {
               ":one": 1,
-              ":now": deps.now().toISOString(),
+              ":now": now,
             },
           }),
         );
@@ -96,13 +121,36 @@ export function parseSmsEvent(
     : undefined;
 }
 
+function eventDetails(payload: unknown): { messageStatusDescription?: string; totalMessagePrice?: number } {
+  const object = (payload ?? {}) as Record<string, unknown>;
+  return {
+    ...(typeof object.messageStatusDescription === "string"
+      ? { messageStatusDescription: object.messageStatusDescription.slice(0, 200) }
+      : {}),
+    ...(typeof object.totalMessagePrice === "number" ? { totalMessagePrice: object.totalMessagePrice } : {}),
+  };
+}
+
+const FAILURE_EVENTS = [
+  "TEXT_FAILED",
+  "TEXT_BLOCKED",
+  "TEXT_INVALID",
+  "TEXT_INVALID_MESSAGE",
+  "TEXT_UNREACHABLE",
+  "TEXT_CARRIER_UNREACHABLE",
+  "TEXT_CARRIER_BLOCKED",
+  "TEXT_SPAM",
+  "TEXT_TTL_EXPIRED",
+  "TEXT_UNKNOWN",
+  "TEXT_PROTECT_BLOCKED",
+];
+
 function statusFor(
   eventType: string,
 ): "SENT" | "DELIVERED" | "FAILED" | undefined {
   if (eventType === "TEXT_SUCCESSFUL") return "SENT";
   if (eventType === "TEXT_DELIVERED") return "DELIVERED";
-  if (["TEXT_FAILED", "TEXT_BLOCKED", "TEXT_INVALID"].includes(eventType))
-    return "FAILED";
+  if (FAILURE_EVENTS.includes(eventType)) return "FAILED";
   return undefined;
 }
 

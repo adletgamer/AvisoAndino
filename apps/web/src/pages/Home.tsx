@@ -1,11 +1,10 @@
 import { HeroVisual } from '../components/HeroVisual';
 import { Footer, Nav } from '../components/Layout';
-import { Phone } from '../components/Phone';
+import { ReplayDemo } from '../components/ReplayDemo';
 import { Reveal } from '../components/Reveal';
 import { StatusWidget } from '../components/StatusWidget';
 import { useI18n } from '../i18n';
 import { Link } from '../router';
-import { sampleWarningSms } from '../sms';
 
 export function Home() {
   const { t } = useI18n();
@@ -39,13 +38,13 @@ export function Home() {
           </div>
         </Reveal>
 
-        <Reveal as="section" className="phone-section" aria-labelledby="phone-title">
+        <Reveal as="section" id="demo" className="phone-section" aria-labelledby="phone-title">
           <div>
             <p className="eyebrow">{t.phone.eyebrow}</p>
             <h2 id="phone-title">{t.phone.title}</h2>
             <p>{t.phone.body}</p>
           </div>
-          <Phone sms={sampleWarningSms()} caption={t.phone.caption} />
+          <ReplayDemo />
         </Reveal>
 
         <Reveal as="section" className="principle" aria-labelledby="principle-title">
