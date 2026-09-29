@@ -238,6 +238,16 @@ describe("sender seguro e idempotente", () => {
     expect(failed).not.toContain("FAILED");
   });
 
+  it("no usa palabras reservadas de DynamoDB sin alias (segments, status, ttl)", async () => {
+    mockRecords();
+    mockConfig(false);
+    await createSenderHandler(deps())(event());
+    for (const call of ddbMock.commandCalls(UpdateCommand)) {
+      const expression = String(call.args[0].input.UpdateExpression ?? "");
+      expect(expression).not.toMatch(/(^|[\s,])(segments|status|ttl)\s*=/);
+    }
+  });
+
   it("si ya no está PENDING no procesa otra vez", async () => {
     ddbMock
       .on(GetCommand)
