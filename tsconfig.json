@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "noEmit": true
+  },
+  "include": [
+    "apps/**/*.ts",
+    "apps/**/*.tsx",
+    "infra/**/*.ts",
+    "packages/**/*.ts",
+    "scripts/**/*.ts",
+    "services/**/*.ts",
+    "vitest.config.ts"
+  ],
+  "exclude": ["**/cdk.out/**", "**/coverage/**", "**/dist/**", "**/node_modules/**"]
+}
