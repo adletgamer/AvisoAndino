@@ -139,7 +139,7 @@ function mockReadModel(source: "SENAMHI_WFS" | "REPLAY" = "SENAMHI_WFS") {
 }
 
 describe("matcher", () => {
-  it("crea una delivery y encola una sola vez", async () => {
+  it("trap_delivery_key_includes_level: crea la clave determinista con sufijo L<nivel>", async () => {
     mockReadModel();
     ddbMock.on(PutCommand).resolves({});
     const result = await createMatcherHandler(deps())(
@@ -154,6 +154,33 @@ describe("matcher", () => {
       channel: "SMS",
       template: "HELADA",
       status: "PENDING",
+    });
+    expect(item?.deliveryId).not.toBe("S1#2026#388");
+  });
+
+  it("trap_escalation_delivery_key: un L2 previo permite una nueva delivery L3 SUBE_NIVEL", async () => {
+    mockReadModel();
+    ddbMock.on(BatchGetCommand).resolves({
+      Responses: {
+        Deliveries: [
+          {
+            deliveryId: "S1#2026#388#L2",
+            level: 2,
+            status: "SENT",
+          },
+        ],
+      },
+    });
+    ddbMock.on(PutCommand).resolves({});
+
+    await createMatcherHandler(deps())(
+      sqsEvent('{"warningId":"SENAMHI#2026#388#2"}'),
+    );
+
+    expect(ddbMock.commandCalls(PutCommand)[0]?.args[0].input.Item).toMatchObject({
+      deliveryId: "S1#2026#388#L3",
+      level: 3,
+      template: "SUBE_NIVEL",
     });
   });
 

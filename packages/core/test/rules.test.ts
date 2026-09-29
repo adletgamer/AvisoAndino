@@ -289,6 +289,122 @@ describe("casos deterministas de RULES.md", () => {
   });
 });
 
+describe("trampas de datos verificadas con fixtures reales", () => {
+  it("trap_level_1_hard_floor: Nivel 1 nunca envía aunque minLevel se fuerce a 1", () => {
+    const loweredThreshold = subscriber(-77.03, -12.05, 2, {
+      minLevel: 1 as Subscriber["minLevel"],
+    });
+
+    expect(effectiveLevel([loweredThreshold.lon, loweredThreshold.lat], w388_2.areas)).toBe(1);
+    expect(decision([w388_2], loweredThreshold)).toMatchObject({
+      send: false,
+      level: 1,
+      reason: "outside_polygons",
+    });
+  });
+
+  it("trap_indeci_descripcio: el texto saliente LLUVIA nunca usa DESCRIPCIO de quebradas", () => {
+    const indeciFixture = fixture(
+      "indeci-layer5-avisopp24h.2026-09-28.simplified.geojson",
+    );
+    const sourceDescription = String(
+      indeciFixture.features[0]?.properties.DESCRIPCIO,
+    );
+    expect(sourceDescription.toLowerCase()).toContain("quebradas");
+
+    const warning = normalizeIndeci(indeciFixture, hash);
+    const result = decision(
+      [warning],
+      subscriber(-69.5, -16.5, 3, { centroPoblado: "DESAGUADERO" }),
+      { now: new Date("2026-09-28T18:00:00Z") },
+    );
+    expect(result).toMatchObject({
+      send: true,
+      level: 3,
+      template: "LLUVIA",
+    });
+
+    const outgoingText = render(result.template!, {
+      COLOR: "NARANJA",
+      fechas: result.fechas!,
+      lugar: "DESAGUADERO",
+      nro: warning.nroAviso,
+      link: "d111111abcdef8.cloudfront.net/c/K7P2QX",
+    });
+    expect(outgoingText).toContain("lluvias fuertes");
+    expect(outgoingText.toLowerCase()).not.toContain("quebradas");
+    expect(outgoingText).not.toContain(sourceDescription);
+  });
+
+  it("trap_cod_fen_7_wording: NOCTURNA renderiza heladas y DIURNA/FRIAJE renderiza friaje", () => {
+    const collection = fixture(
+      "senamhi-wfs-aviso.388_2_2026.decimated.geojson",
+    );
+    const helada = normalizeWfs(collection, row388, hash);
+    const friaje = normalizeWfs(
+      collection,
+      {
+        ...row388,
+        title:
+          "DESCENSO DE TEMPERATURA DIURNA EN LA SELVA - CUARTO FRIAJE",
+      },
+      hash,
+    );
+    const target = subscriber(-74.97, -12.79, 3);
+    const heladaDecision = decision([helada], target);
+    const friajeDecision = decision([friaje], target);
+
+    expect(helada.hazard).toBe("HELADA");
+    expect(friaje.hazard).toBe("FRIAJE");
+    expect(
+      render(heladaDecision.template!, {
+        COLOR: "NARANJA",
+        fechas: heladaDecision.fechas!,
+        lugar: "HUANCAVELICA",
+        nro: 388,
+        link: "d111111abcdef8.cloudfront.net/c/K7P2QX",
+      }),
+    ).toContain("heladas");
+    expect(
+      render(friajeDecision.template!, {
+        COLOR: "NARANJA",
+        fechas: friajeDecision.fechas!,
+        lugar: "HUANCAVELICA",
+        nro: 388,
+        link: "d111111abcdef8.cloudfront.net/c/K7P2QX",
+      }),
+    ).toContain("friaje y lluvias");
+  });
+
+  it("trap_escalation_only_up: mismo nivel y nivel menor no envían; nivel mayor usa SUBE_NIVEL", () => {
+    const same = decision([w388_2], subscriber(-74.97, -12.79, 2), {
+      alreadySentLevels: [3],
+    });
+    const lower = decision([w388_2], subscriber(-70.02, -15.84, 2), {
+      alreadySentLevels: [3],
+    });
+    const higher = decision([w388_2], subscriber(-74.97, -12.79, 2), {
+      alreadySentLevels: [2],
+    });
+
+    expect(same).toMatchObject({
+      send: false,
+      level: 3,
+      reason: "already_sent",
+    });
+    expect(lower).toMatchObject({
+      send: false,
+      level: 2,
+      reason: "lower_than_sent",
+    });
+    expect(higher).toMatchObject({
+      send: true,
+      level: 3,
+      template: "SUBE_NIVEL",
+    });
+  });
+});
+
 describe("plantillas y validador", () => {
   it("15: renderiza todas las plantillas en un segmento GSM-7", () => {
     for (const id of Object.keys(TEMPLATES) as TemplateId[]) {

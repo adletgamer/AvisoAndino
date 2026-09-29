@@ -196,7 +196,7 @@ async function matchSubscriber(
   const confirmCode = await uniqueConfirmCode(deps);
   let template: TemplateId = decision.template;
   let tmin: number | undefined;
-  if (warningGroup[0]?.hazard === "HELADA") {
+  if (warningGroup[0]?.hazard === "HELADA" && template !== "SUBE_NIVEL") {
     tmin = await deps.getTmin(subscriber.lat, subscriber.lon);
     template = tmin === undefined ? "HELADA_SIN_TMIN" : "HELADA";
   }
