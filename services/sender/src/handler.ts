@@ -255,7 +255,8 @@ async function recordSent(
     ":dest": phone ? maskPhone(phone) : "SIMULADO",
   };
   const fields =
-    "sentAt = :sentAt, messageId = :messageId, segments = :segments, encoding = :encoding, " +
+    // "segments" es palabra reservada de DynamoDB: va con alias.
+    "sentAt = :sentAt, messageId = :messageId, #segments = :segments, encoding = :encoding, " +
     "latencyDetectToSendSec = :latency, simulatedReason = :reason, destinationMasked = :dest";
   try {
     try {
@@ -265,7 +266,7 @@ async function recordSent(
           Key: { deliveryId },
           UpdateExpression: `SET #status = :sent, ${fields}`,
           ConditionExpression: "#status = :sending",
-          ExpressionAttributeNames: { "#status": "status" },
+          ExpressionAttributeNames: { "#status": "status", "#segments": "segments" },
           ExpressionAttributeValues: { ...values, ":sent": "SENT", ":sending": "SENDING" },
         }),
       );
@@ -277,6 +278,7 @@ async function recordSent(
           TableName: requiredEnv("DELIVERIES_TABLE"),
           Key: { deliveryId },
           UpdateExpression: `SET ${fields}`,
+          ExpressionAttributeNames: { "#segments": "segments" },
           ExpressionAttributeValues: values,
         }),
       );
