@@ -68,4 +68,15 @@ describe('AvisoAndinoWebStack', () => {
       }
     }
   });
+  it('las rutas SPA se reescriben solo en S3: los 403/404 de /api/* llegan tal cual', () => {
+    const dist = Object.values(
+      synthWeb('abc123.execute-api.us-east-1.amazonaws.com').findResources('AWS::CloudFront::Distribution'),
+    )[0] as { Properties: { DistributionConfig: Record<string, any> } };
+    const config = dist.Properties.DistributionConfig;
+    expect(config.CustomErrorResponses).toBeUndefined();
+    expect(config.DefaultCacheBehavior.FunctionAssociations).toEqual([
+      expect.objectContaining({ EventType: 'viewer-request' }),
+    ]);
+    expect(config.CacheBehaviors[0].FunctionAssociations).toBeUndefined();
+  });
 });

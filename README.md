@@ -137,6 +137,13 @@ curl -s https://d2p62exvpg7lbb.cloudfront.net/api/status   # "smsEnabled": false
 
 Cada SMS a Perú cuesta USD 0,23252; el sandbox tiene un tope de USD 1/mes (unos 4 SMS).
 
+Ensayo gratis antes de grabar: `sms/dryRun=true` (con `SMS_ENABLED=false`) hace que el sender recorra el camino SMS completo (permisos IAM, allowlist, config set) con `DryRun`: no envía ni cobra y la entrega queda como simulada con motivo `SMS_DRY_RUN`. Vuelve a ponerlo en `false` antes del envío real.
+
+```bash
+aws ssm put-parameter --name /aviso-andino/dev/sms/dryRun --type String --overwrite --value true $P   # ensayo
+aws ssm put-parameter --name /aviso-andino/dev/sms/dryRun --type String --overwrite --value false $P  # antes del SMS real
+```
+
 ## Costo estimado (piloto, al mes)
 
 | Concepto                                                         | Estimación                                                                                                                                                                                |

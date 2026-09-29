@@ -46,6 +46,11 @@ interface SenderConfig {
   smsMaxPrice: string;
   /** Números E.164 exactos (sandbox: verificados). Cualquier otro destino se rechaza. */
   smsAllowlist: Set<string>;
+  /**
+   * sms/dryRun=true: recorre el camino SMS completo (IAM, allowlist, config set) con DryRun=true.
+   * Nunca envía ni cobra, aunque SMS_ENABLED=false; el envío queda contabilizado como simulado.
+   */
+  smsDryRun: boolean;
   telegramBotToken?: string;
   phoneEncKey?: string;
 }
@@ -149,7 +154,7 @@ async function processDelivery(
   if (channel === "SMS") {
     if (isReplay && delivery.allowRealSms !== true)
       simulatedReason = "REPLAY_FORCED_SIMULATED";
-    else if (!config.smsEnabled) simulatedReason = "SMS_DISABLED";
+    else if (!config.smsEnabled && !config.smsDryRun) simulatedReason = "SMS_DISABLED";
     else {
       try {
         phone = subscriber.phoneEnc
@@ -205,6 +210,11 @@ async function processDelivery(
       deps,
       phone,
     );
+    if (channel === "SMS" && config.smsDryRun) {
+      deps.log.info("sms_dry_run_ok", { deliveryId, messageId });
+      await recordSent(delivery, "SIMULATED", `dryrun:${messageId}`, "SMS_DRY_RUN", phone, deps);
+      return;
+    }
     await recordSent(delivery, channel, messageId, simulatedReason, phone, deps);
   } catch (error) {
     // Un SMS real nunca se reintenta (presupuesto sandbox ~1 USD/mes): cualquier error lo deja FAILED.
@@ -253,11 +263,13 @@ async function recordSent(
     ":latency": Math.max(0, Math.round((sentAt.getTime() - Date.parse(delivery.createdAt)) / 1000)),
     ":reason": simulatedReason ?? "NONE",
     ":dest": phone ? maskPhone(phone) : "SIMULADO",
+    ":channel": channel,
   };
   const fields =
     // "segments" es palabra reservada de DynamoDB: va con alias.
     "sentAt = :sentAt, messageId = :messageId, #segments = :segments, encoding = :encoding, " +
-    "latencyDetectToSendSec = :latency, simulatedReason = :reason, destinationMasked = :dest";
+    "latencyDetectToSendSec = :latency, simulatedReason = :reason, destinationMasked = :dest, " +
+    "channel = :channel";
   try {
     try {
       await deps.ddb.send(
@@ -344,7 +356,7 @@ async function sendChannel(
     return `telegram:${result.result?.message_id ?? "unknown"}`;
   }
   // Última barrera antes de gastar: SMS_ENABLED y destino exacto en la allowlist.
-  if (!config.smsEnabled) throw permanent("SMS deshabilitado");
+  if (!config.smsEnabled && !config.smsDryRun) throw permanent("SMS deshabilitado");
   if (!phone || !config.smsAllowlist.has(phone))
     throw permanent("Destino fuera de la allowlist: SMS rechazado");
   const output: SendTextMessageCommandOutput = await deps.sms.send(
@@ -355,6 +367,7 @@ async function sendChannel(
       ConfigurationSetName: requiredEnv("SMS_CONFIGURATION_SET"),
       MaxPrice: config.smsMaxPrice,
       Context: { deliveryId: delivery.deliveryId },
+      ...(config.smsDryRun ? { DryRun: true } : {}),
     }),
   );
   if (!output.MessageId)
@@ -371,6 +384,7 @@ async function loadConfig(deps: SenderDependencies): Promise<SenderConfig> {
     "SMS_DAILY_CAP",
     "SMS_MAX_PRICE",
     "sms/allowlist",
+    "sms/dryRun",
     "telegram/botToken",
     "secrets/phoneEncKey",
   ].map((name) => `${prefix}/${name}`);
@@ -389,6 +403,7 @@ async function loadConfig(deps: SenderDependencies): Promise<SenderConfig> {
     smsDailyCap: positiveInteger(values.get(`${prefix}/SMS_DAILY_CAP`), 30),
     smsMaxPrice: positiveDecimal(values.get(`${prefix}/SMS_MAX_PRICE`), "0.30"),
     smsAllowlist: new Set(allowlist.filter((entry) => /^\+519\d{8}$/.test(entry))),
+    smsDryRun: values.get(`${prefix}/sms/dryRun`) === "true",
     telegramBotToken: values.get(`${prefix}/telegram/botToken`) || undefined,
     phoneEncKey: values.get(`${prefix}/secrets/phoneEncKey`) || undefined,
   };

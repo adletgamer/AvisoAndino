@@ -217,4 +217,17 @@ describe('AvisoAndinoStack', () => {
       }
     }
   });
+  it('el sender puede enviar por el config set y su protect configuration (sin Resource *)', () => {
+    const policies = Object.values(synthTemplate(true).findResources('AWS::IAM::Policy')) as Array<{
+      Properties: { PolicyDocument: { Statement: Array<{ Action: unknown; Resource: unknown }> } };
+    }>;
+    const statement = policies
+      .flatMap((policy) => policy.Properties.PolicyDocument.Statement)
+      .find((entry) => entry.Action === 'sms-voice:SendTextMessage');
+    expect(statement).toBeDefined();
+    const resources = JSON.stringify(statement!.Resource);
+    expect(resources).toContain('protect-configuration/');
+    expect(resources).toContain('SmsConfigurationSet');
+    expect(statement!.Resource).not.toContain('*');
+  });
 });
