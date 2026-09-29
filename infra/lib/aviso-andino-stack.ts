@@ -218,9 +218,8 @@ export class AvisoAndinoStack extends Stack {
     const configurationSetName = `aviso-andino-${props.stage}`;
     let configurationSet: smsvoice.CfnConfigurationSet | undefined;
     let smsEventsTopic: sns.Topic | undefined;
-    let protectConfiguration: smsvoice.CfnProtectConfiguration | undefined;
     if (smsInfra) {
-      protectConfiguration = new smsvoice.CfnProtectConfiguration(this, 'SmsProtectConfiguration', {
+      const protectConfiguration = new smsvoice.CfnProtectConfiguration(this, 'SmsProtectConfiguration', {
         countryRuleSet: { sms: [{ countryCode: 'PE', protectStatus: 'ALLOW' }] },
         deletionProtectionEnabled: !isDev,
       });
@@ -305,21 +304,15 @@ export class AvisoAndinoStack extends Stack {
       stats.grantReadWriteData(smsEvents);
     }
 
-    if (configurationSet && protectConfiguration) {
-      // SendTextMessage se autoriza contra el config set Y la protect configuration asociada
-      // (y contra la identidad de origen si existiera; en Perú no hay: ruta compartida).
-      // El destino real lo limita la allowlist E.164 exacta del sender.
-      const smsArn = (resource: string, resourceName: string) =>
-        Arn.format({ service: 'sms-voice', resource, resourceName, arnFormat: ArnFormat.SLASH_RESOURCE_NAME }, this);
+    if (configurationSet) {
+      // Perú sale por la ruta compartida (sin OriginationIdentity): SendTextMessage se evalúa entonces
+      // contra "*" (ningún tipo de recurso es obligatorio para esta acción), así que limitarlo al ARN
+      // del config set / protect configuration produce AccessDenied. Solo esta acción; el destino lo
+      // limitan la allowlist E.164 exacta del sender, la protect configuration (solo PE) y el
+      // límite de gasto SMS de la cuenta.
       sender.addToRolePolicy(new iam.PolicyStatement({
         actions: ['sms-voice:SendTextMessage'],
-        resources: [
-          configurationSet.attrArn,
-          smsArn('protect-configuration', protectConfiguration.attrProtectConfigurationId),
-          smsArn('phone-number', '*'),
-          smsArn('pool', '*'),
-          smsArn('sender-id', '*'),
-        ],
+        resources: ['*'],
       }));
     }
     sender.addToRolePolicy(new iam.PolicyStatement({
