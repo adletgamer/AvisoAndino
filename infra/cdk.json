@@ -3,6 +3,7 @@
   "context": {
     "stage": "dev",
     "alarmEmail": "",
+    "smsInfra": false,
     "@aws-cdk/aws-lambda:recognizeLayerVersion": true
   }
 }

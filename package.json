@@ -16,7 +16,7 @@
     "test:cov": "vitest run --coverage",
     "synth": "pnpm --filter @aviso/infra synth",
     "diff": "pnpm --filter @aviso/infra diff",
-    "deploy": "pnpm --filter @aviso/web build && pnpm --filter @aviso/infra deploy",
+    "deploy": "pnpm --filter @aviso/web build && pnpm --filter @aviso/infra run deploy",
     "dev": "pnpm --filter @aviso/web dev",
     "seed:demo": "tsx scripts/seed-demo.ts"
   },

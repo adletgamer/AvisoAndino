@@ -3,8 +3,8 @@ import { Match, Template } from 'aws-cdk-lib/assertions';
 import { describe, expect, it } from 'vitest';
 import { AvisoAndinoStack } from '../lib/aviso-andino-stack.js';
 
-function synthTemplate(): Template {
-  const app = new App({ context: { stage: 'dev', scheduleEnabled: false } });
+function synthTemplate(smsInfra = false): Template {
+  const app = new App({ context: { stage: 'dev', scheduleEnabled: false, smsInfra } });
   const stack = new AvisoAndinoStack(app, 'AvisoAndino-dev', {
     stage: 'dev',
     env: { region: 'us-east-1' },
@@ -23,7 +23,7 @@ describe('AvisoAndinoStack', () => {
   });
 
   it('crea las cinco Lambdas de aplicación en Node 24 arm64', () => {
-    const template = synthTemplate();
+    const template = synthTemplate(true);
     const applicationNames = new Set(['ingest', 'matcher', 'sender', 'api', 'sms-events']);
     const functions = Object.values(template.findResources('AWS::Lambda::Function'))
       .map((resource) => resource.Properties as Record<string, unknown>)
@@ -38,6 +38,43 @@ describe('AvisoAndinoStack', () => {
     }
   });
 
+  it('omite toda la infraestructura SMS por defecto', () => {
+    const template = synthTemplate();
+    template.resourceCountIs('AWS::SMSVOICE::ConfigurationSet', 0);
+    template.resourceCountIs('AWS::SMSVOICE::ProtectConfiguration', 0);
+    template.resourceCountIs('AWS::SNS::Topic', 0);
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'zts-aviso-andino-dev-sender',
+      Environment: {
+        Variables: Match.objectLike({
+          CONFIGURATION_SET_NAME: '',
+          SMS_ENABLED: 'false',
+        }),
+      },
+    });
+    expect(JSON.stringify(template.findResources('AWS::Lambda::Function'))).not.toContain('sms-events');
+    expect(JSON.stringify(template.findResources('AWS::Logs::LogGroup'))).not.toContain('sms-events');
+    expect(JSON.stringify(template.findResources('AWS::IAM::Role'))).not.toContain('sms-events');
+  });
+
+  it('crea un event destination SMS válido al habilitar smsInfra', () => {
+    const template = synthTemplate(true);
+    template.resourceCountIs('AWS::SMSVOICE::ProtectConfiguration', 1);
+    template.hasResourceProperties('AWS::SMSVOICE::ConfigurationSet', {
+      ConfigurationSetName: 'aviso-andino-dev',
+      EventDestinations: [{
+        Enabled: true,
+        EventDestinationName: 'delivery-events',
+        MatchingEventTypes: ['TEXT_ALL'],
+        SnsDestination: { TopicArn: Match.anyValue() },
+      }],
+    });
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'zts-aviso-andino-dev-sms-events',
+    });
+    template.hasOutput('ConfigurationSetName', { Value: 'aviso-andino-dev' });
+  });
+
   it('incluye colas con DLQ, Scheduler, CloudFront y Budget', () => {
     const template = synthTemplate();
     template.hasResourceProperties('AWS::SQS::Queue', { QueueName: 'zts-aviso-andino-dev-match-dlq' });
@@ -48,6 +85,22 @@ describe('AvisoAndinoStack', () => {
     template.hasResourceProperties('AWS::CloudFront::OriginAccessControl', Match.objectLike({
       OriginAccessControlConfig: Match.objectLike({ OriginAccessControlOriginType: 's3' }),
     }));
+  });
+
+  it('sintetiza el throttling por ruta con claves CloudFormation PascalCase', () => {
+    const template = synthTemplate();
+    template.hasResourceProperties('AWS::ApiGatewayV2::Stage', {
+      DefaultRouteSettings: {
+        ThrottlingBurstLimit: 10,
+        ThrottlingRateLimit: 5,
+      },
+      RouteSettings: {
+        'POST /api/replay': {
+          ThrottlingBurstLimit: 2,
+          ThrottlingRateLimit: 1,
+        },
+      },
+    });
   });
 
   it('no concede Action wildcard y nombra todos los roles zts-*', () => {

@@ -124,4 +124,4 @@ Request:
 - Siempre responde `200` rápido, también ante errores lógicos, para que Telegram no reintente en bucle.
 
 ## Webhook de SMS entrante: **no aplica en Perú (por ahora)**
-Con ruta compartida no llegan respuestas (RESEARCH.md §3). Queda preparado el handler `sms-events` para un futuro short code PE: el evento `TEXT_RECEIVED` / two-way por SNS con body `1` confirma y `STOP`/`BAJA` da de baja. Hoy ese mismo handler solo procesa los **eventos de estado** del Configuration Set (`TEXT_SUCCESSFUL`, `TEXT_DELIVERED`, `TEXT_FAILED`, …), que se correlacionan por `context.deliveryId`.
+Con ruta compartida no llegan respuestas (RESEARCH.md §3). Queda preparado el handler `sms-events` para un futuro short code PE: el evento `TEXT_RECEIVED` / two-way por SNS con body `1` confirma y `STOP`/`BAJA` da de baja. Hoy ese mismo handler solo procesa los **eventos de estado** del Configuration Set (`TEXT_SUCCESSFUL`, `TEXT_DELIVERED`, `TEXT_UNREACHABLE`, `TEXT_CARRIER_UNREACHABLE`, `TEXT_BLOCKED`, …), que se correlacionan por `context.deliveryId`. SMS Voice v2 no define un evento `TEXT_FAILED`; los fallos llegan con los estados específicos documentados por el servicio.

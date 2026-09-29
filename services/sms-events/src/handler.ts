@@ -1,4 +1,5 @@
-// Lambda sms-events: SNS <- ConfigurationSet de End User Messaging (TEXT_DELIVERED, TEXT_FAILED, ...).
+// Lambda sms-events: SNS <- ConfigurationSet de End User Messaging
+// (TEXT_DELIVERED, TEXT_UNREACHABLE, TEXT_CARRIER_BLOCKED, ...).
 // Correlaciona por context.deliveryId. Loguear el primer evento real (sin teléfono) y documentar su formato en RESEARCH.md.
 // Futuro: si hay short code PE, procesar respuestas entrantes "1" (confirmar) y "STOP"/"BAJA".
 import type { SNSEvent } from 'aws-lambda';
