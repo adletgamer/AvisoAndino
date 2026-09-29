@@ -11,6 +11,7 @@ import * as logs from 'aws-cdk-lib/aws-logs';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import type { Construct } from 'constructs';
+import { spaRewriteAssociation } from './spa-rewrite.js';
 
 export interface AvisoAndinoWebStackProps extends StackProps {
   stage: string;
@@ -133,12 +134,9 @@ export class AvisoAndinoWebStack extends Stack {
         origin: origins.S3BucketOrigin.withOriginAccessControl(bucket),
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         responseHeadersPolicy: securityHeaders,
+        functionAssociations: [spaRewriteAssociation(this, 'SpaRewrite')],
       },
       additionalBehaviors,
-      errorResponses: [
-        { httpStatus: 403, responseHttpStatus: 200, responsePagePath: '/index.html' },
-        { httpStatus: 404, responseHttpStatus: 200, responsePagePath: '/index.html' },
-      ],
     });
 
     const deploymentRole = new iam.Role(this, 'SiteDeploymentRole', {

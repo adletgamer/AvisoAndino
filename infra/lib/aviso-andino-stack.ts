@@ -34,6 +34,7 @@ import * as sqs from 'aws-cdk-lib/aws-sqs';
 import * as sources from 'aws-cdk-lib/aws-lambda-event-sources';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import type { Construct } from 'constructs';
+import { spaRewriteAssociation } from './spa-rewrite.js';
 
 export interface AvisoAndinoStackProps extends StackProps {
   stage: string;
@@ -217,8 +218,9 @@ export class AvisoAndinoStack extends Stack {
     const configurationSetName = `aviso-andino-${props.stage}`;
     let configurationSet: smsvoice.CfnConfigurationSet | undefined;
     let smsEventsTopic: sns.Topic | undefined;
+    let protectConfiguration: smsvoice.CfnProtectConfiguration | undefined;
     if (smsInfra) {
-      const protectConfiguration = new smsvoice.CfnProtectConfiguration(this, 'SmsProtectConfiguration', {
+      protectConfiguration = new smsvoice.CfnProtectConfiguration(this, 'SmsProtectConfiguration', {
         countryRuleSet: { sms: [{ countryCode: 'PE', protectStatus: 'ALLOW' }] },
         deletionProtectionEnabled: !isDev,
       });
@@ -303,10 +305,21 @@ export class AvisoAndinoStack extends Stack {
       stats.grantReadWriteData(smsEvents);
     }
 
-    if (configurationSet) {
+    if (configurationSet && protectConfiguration) {
+      // SendTextMessage se autoriza contra el config set Y la protect configuration asociada
+      // (y contra la identidad de origen si existiera; en Perú no hay: ruta compartida).
+      // El destino real lo limita la allowlist E.164 exacta del sender.
+      const smsArn = (resource: string, resourceName: string) =>
+        Arn.format({ service: 'sms-voice', resource, resourceName, arnFormat: ArnFormat.SLASH_RESOURCE_NAME }, this);
       sender.addToRolePolicy(new iam.PolicyStatement({
         actions: ['sms-voice:SendTextMessage'],
-        resources: [configurationSet.attrArn],
+        resources: [
+          configurationSet.attrArn,
+          smsArn('protect-configuration', protectConfiguration.attrProtectConfigurationId),
+          smsArn('phone-number', '*'),
+          smsArn('pool', '*'),
+          smsArn('sender-id', '*'),
+        ],
       }));
     }
     sender.addToRolePolicy(new iam.PolicyStatement({
@@ -435,6 +448,7 @@ export class AvisoAndinoStack extends Stack {
           origin: origins.S3BucketOrigin.withOriginAccessControl(webBucket),
           viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
           responseHeadersPolicy: securityHeaders,
+          functionAssociations: [spaRewriteAssociation(this, 'WebSpaRewrite')],
         },
         additionalBehaviors: {
           '/api/*': {
@@ -446,10 +460,6 @@ export class AvisoAndinoStack extends Stack {
             responseHeadersPolicy: securityHeaders,
           },
         },
-        errorResponses: [
-          { httpStatus: 403, responseHttpStatus: 200, responsePagePath: '/index.html' },
-          { httpStatus: 404, responseHttpStatus: 200, responsePagePath: '/index.html' },
-        ],
       });
       webUrl = `https://${distribution.distributionDomainName}`;
 

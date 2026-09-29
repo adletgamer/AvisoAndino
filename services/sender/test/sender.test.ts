@@ -108,13 +108,14 @@ function mockRecords(runId = "LIVE", extra: Record<string, unknown> = {}, phoneE
   });
 }
 
-function mockConfig(enabled: boolean, allowlist = '["+51912345678"]') {
+function mockConfig(enabled: boolean, allowlist = '["+51912345678"]', dryRun = false) {
   ssmMock.on(GetParametersCommand).resolves({
     Parameters: [
       { Name: "/aviso-andino/test/SMS_ENABLED", Value: String(enabled) },
       { Name: "/aviso-andino/test/SMS_DAILY_CAP", Value: "30" },
       { Name: "/aviso-andino/test/SMS_MAX_PRICE", Value: "0.30" },
       { Name: "/aviso-andino/test/sms/allowlist", Value: allowlist },
+      { Name: "/aviso-andino/test/sms/dryRun", Value: String(dryRun) },
       { Name: "/aviso-andino/test/secrets/phoneEncKey", Value: ENC_KEY },
     ],
   });
@@ -246,6 +247,33 @@ describe("sender seguro e idempotente", () => {
       const expression = String(call.args[0].input.UpdateExpression ?? "");
       expect(expression).not.toMatch(/(^|[\s,])(segments|status|ttl)\s*=/);
     }
+  });
+
+  it("sms/dryRun valida el camino SMS con DryRun=true aunque SMS_ENABLED=false y lo cuenta como simulado", async () => {
+    mockRecords("REPLAY#R1", { allowRealSms: true }, encryptPhone("+51912345678", ENC_KEY));
+    mockConfig(false, '["+51912345678"]', true);
+    smsMock.on(SendTextMessageCommand).resolves({ MessageId: "dry-1" });
+    await createSenderHandler(deps())(event());
+    const calls = smsMock.commandCalls(SendTextMessageCommand);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.args[0].input.DryRun).toBe(true);
+    const sent = ddbMock
+      .commandCalls(UpdateCommand)
+      .map((call) => call.args[0].input.ExpressionAttributeValues)
+      .find((values) => values?.[":sent"] === "SENT");
+    expect(sent).toMatchObject({ ":channel": "SIMULATED", ":reason": "SMS_DRY_RUN", ":messageId": "dryrun:dry-1" });
+    const stats = ddbMock
+      .commandCalls(UpdateCommand)
+      .map((call) => call.args[0].input.Key)
+      .filter((key) => key && "statsPk" in key);
+    expect(stats).not.toContainEqual(expect.objectContaining({ statsPk: "GLOBAL" }));
+  });
+
+  it("sms/dryRun nunca envía a un destino fuera de la allowlist", async () => {
+    mockRecords("REPLAY#R1", { allowRealSms: true }, encryptPhone("+51912345678", ENC_KEY));
+    mockConfig(false, '["+51900000001"]', true);
+    await createSenderHandler(deps())(event());
+    expect(smsMock.commandCalls(SendTextMessageCommand)).toHaveLength(0);
   });
 
   it("si ya no está PENDING no procesa otra vez", async () => {
