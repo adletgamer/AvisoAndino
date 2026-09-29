@@ -12,7 +12,12 @@ export function isGsm7(s: string): boolean {
  * TODO(prompt 03): completar mapeos (“ ” ‘ ’ – — …) y tests.
  */
 export function sanitizeToGsm7(s: string): string {
-  const keepEnye = s.replace(/ñ/g, '\u0000').replace(/Ñ/g, '\u0001');
+  const normalizedPunctuation = s
+    .replace(/[“”«»]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/[‐‑‒–—−]/g, '-')
+    .replace(/…/g, '...');
+  const keepEnye = normalizedPunctuation.replace(/ñ/g, '\u0000').replace(/Ñ/g, '\u0001');
   const stripped = keepEnye.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const back = stripped.replace(/\u0000/g, 'ñ').replace(/\u0001/g, 'Ñ');
   return [...back].filter((c) => GSM7_SET.has(c)).join('');

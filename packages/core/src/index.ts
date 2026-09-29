@@ -6,3 +6,6 @@ export * from './templates.js';
 export * from './geo.js';
 export * from './rules.js';
 export * from './rewriteValidator.js';
+export * from './normalize.js';
+export * from './privacy.js';
+export * from './schemas.js';

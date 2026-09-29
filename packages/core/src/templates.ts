@@ -1,4 +1,5 @@
 import type { TemplateId } from './types.js';
+import { isGsm7, sanitizeToGsm7 } from './gsm7.js';
 
 /** Plantillas exactas de docs/RULES.md §3 (máx. 160 GSM-7 en el peor caso; hay test). */
 export const TEMPLATES: Record<TemplateId, string> = {
@@ -25,10 +26,40 @@ export interface TemplateVars {
 
 /** TODO(prompt 03): sanitizar lugar a GSM-7, truncar a MAX_LUGAR, reemplazar placeholders, validar isGsm7 && length<=160 (lanzar si no). */
 export function render(id: TemplateId, vars: TemplateVars): string {
-  throw new Error('TODO render');
+  const lugar = truncatePlace(sanitizeToGsm7(vars.lugar.trim()));
+  const values: Record<string, string> = {
+    COLOR: vars.COLOR ?? '',
+    fechas: vars.fechas ?? '',
+    lugar,
+    tmin: vars.tmin === undefined ? '' : String(Math.round(vars.tmin)),
+    nro: vars.nro === undefined ? '' : String(vars.nro),
+    link: vars.link.replace(/^https?:\/\//, ''),
+  };
+  const text = TEMPLATES[id].replace(/\{(\w+)\}/g, (_match, key: string) => values[key] ?? '');
+  if (!isGsm7(text)) throw new Error(`La plantilla ${id} no es GSM-7`);
+  if ([...text].length > 160) throw new Error(`La plantilla ${id} supera 160 caracteres`);
+  return text;
 }
 
 /** "2026-09-30T05:00:00Z","2026-10-02T04:59:59Z" -> "30/09-01/10" en hora Lima. TODO(prompt 03) */
 export function formatFechas(fechIni: string, fechFin: string): string {
-  throw new Error('TODO formatFechas');
+  const format = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Lima',
+  });
+  const short = (value: string): string => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) throw new Error('Fechas inválidas');
+    const parts = Object.fromEntries(format.formatToParts(date).map((part) => [part.type, part.value]));
+    return `${parts.day!.padStart(2, '0')}/${parts.month!.padStart(2, '0')}`;
+  };
+  const start = short(fechIni);
+  const end = short(fechFin);
+  return start === end ? start : `${start}-${end}`;
+}
+
+function truncatePlace(value: string): string {
+  if (value.length <= MAX_LUGAR) return value;
+  const clipped = value.slice(0, MAX_LUGAR);
+  const lastSpace = clipped.lastIndexOf(' ');
+  return lastSpace >= Math.floor(MAX_LUGAR / 2) ? clipped.slice(0, lastSpace) : clipped;
 }

@@ -63,6 +63,7 @@ export interface Decision {
   scheduleAt?: string; // ISO; horario de silencio para nivel 2
   channelOverride?: Channel; // p. ej. SIMULATED por tope diario
   capped?: boolean;
+  warningIds?: string[];
 }
 
 export interface RulesConfig {
