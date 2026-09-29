@@ -1,0 +1,119 @@
+[
+  {
+    "eventVersion": "1.11",
+    "userIdentity": {
+      "type": "IAMUser",
+      "principalId": "AIDAXWLSGH7DHLI4TVMAL",
+      "arn": "arn:aws:iam::5290XXXXXXXX:user/grokbot-dev",
+      "accountId": "5290XXXXXXXX",
+      "accessKeyId": "[REDACTED]",
+      "userName": "grokbot-dev"
+    },
+    "eventTime": "2026-09-28T23:49:51Z",
+    "eventSource": "aws-mcp.amazonaws.com",
+    "eventName": "DestroySession",
+    "awsRegion": "us-east-1",
+    "sourceIPAddress": "104.30.180.111",
+    "userAgent": "python-httpx/0.28.1 mcp-proxy-for-aws/1.7.0 cursor-vscode/1.0.0",
+    "requestParameters": {
+      "jsonrpc": "2.0",
+      "method": "session/destroy"
+    },
+    "responseElements": null,
+    "requestID": "cd2277d3-d0d4-424a-be49-dc2e1e1f99bb",
+    "eventID": "1dd98f69-708c-4b79-82f8-fdbea5de4eab",
+    "readOnly": false,
+    "eventType": "AwsMcpEvent",
+    "managementEvent": true,
+    "recipientAccountId": "5290XXXXXXXX",
+    "eventCategory": "Management"
+  },
+  {
+    "eventVersion": "1.11",
+    "userIdentity": {
+      "type": "IAMUser",
+      "principalId": "AIDAXWLSGH7DHLI4TVMAL",
+      "arn": "arn:aws:iam::5290XXXXXXXX:user/grokbot-dev",
+      "accountId": "5290XXXXXXXX",
+      "accessKeyId": "[REDACTED]",
+      "userName": "grokbot-dev"
+    },
+    "eventTime": "2026-09-28T23:48:51Z",
+    "eventSource": "aws-mcp.amazonaws.com",
+    "eventName": "CallReadWriteTool",
+    "awsRegion": "us-east-1",
+    "sourceIPAddress": "104.30.180.111",
+    "userAgent": "python-httpx/0.28.1 mcp-proxy-for-aws/1.7.0 shelltest/1",
+    "requestParameters": {
+      "jsonrpc": "2.0",
+      "method": "tools/call",
+      "id": 2,
+      "params": {
+        "name": "aws___run_script",
+        "_meta": "[HIDDEN_DUE_TO_SECURITY_REASONS]",
+        "arguments": "[HIDDEN_DUE_TO_SECURITY_REASONS]"
+      }
+    },
+    "responseElements": {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "result": "[HIDDEN_DUE_TO_SECURITY_REASONS]"
+    },
+    "additionalEventData": {
+      "downstreamRequests": [
+        {
+          "apiName": "sts:GetCallerIdentity",
+          "requestId": "a83b34ec-a2a1-4308-bc55-ca8a2cf169a5",
+          "awsRegion": "us-east-1"
+        }
+      ]
+    },
+    "requestID": "c6ec0dd5-2dc2-49f2-b12a-0a3d528c8cd7",
+    "eventID": "8acd586d-3692-425e-87ff-d87745ad8661",
+    "readOnly": false,
+    "eventType": "AwsMcpEvent",
+    "managementEvent": true,
+    "recipientAccountId": "5290XXXXXXXX",
+    "eventCategory": "Management"
+  },
+  {
+    "eventVersion": "1.11",
+    "userIdentity": {
+      "type": "IAMUser",
+      "principalId": "AIDAXWLSGH7DHLI4TVMAL",
+      "arn": "arn:aws:iam::5290XXXXXXXX:user/grokbot-dev",
+      "accountId": "5290XXXXXXXX",
+      "accessKeyId": "[REDACTED]",
+      "userName": "grokbot-dev",
+      "sessionContext": {
+        "attributes": {
+          "creationDate": "2026-09-28T23:48:50Z",
+          "mfaAuthenticated": "false"
+        }
+      },
+      "invokedBy": "aws-mcp.amazonaws.com"
+    },
+    "eventTime": "2026-09-28T23:48:50Z",
+    "eventSource": "sts.amazonaws.com",
+    "eventName": "GetCallerIdentity",
+    "awsRegion": "us-east-1",
+    "sourceIPAddress": "aws-mcp.amazonaws.com",
+    "userAgent": "aws-mcp.amazonaws.com",
+    "requestParameters": null,
+    "responseElements": null,
+    "additionalEventData": {
+      "ExtendedRequestId": "MTp1cy1lYXN0LTE6UzoxNzkwNjM5MzMwODU5OlI6RGhBWGJUUks=",
+      "RequestDetails": {
+        "awsServingRegion": "us-east-1",
+        "endpointType": "regional"
+      }
+    },
+    "requestID": "a83b34ec-a2a1-4308-bc55-ca8a2cf169a5",
+    "eventID": "8bca9906-0ff4-4c78-9dec-2cc4f91ade6f",
+    "readOnly": true,
+    "eventType": "AwsApiCall",
+    "managementEvent": true,
+    "recipientAccountId": "5290XXXXXXXX",
+    "eventCategory": "Management"
+  }
+]

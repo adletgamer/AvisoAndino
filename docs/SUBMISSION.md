@@ -26,15 +26,19 @@ Tags: `#social-good` `#community`. Criterios (25 % cada uno): Innovación técni
 8. **Cómo lo construí con agentes**: prompts usados (carpeta `prompts/`), capturas de la conexión y fragmento de CloudTrail.
 
 ## 2. Checklist de la prueba de conexión agente ↔ AWS
-- [ ] Captura de `aws --version` (≥ 2.35.0) y de `aws configure agent-toolkit` completado, **o** del banner "Get setup prompt" en Console Home con el prompt aplicado al agente.
-- [ ] Captura del agente (Claude Code, Codex o Cursor) mostrando el plugin **aws-core** instalado y una llamada a una herramienta MCP (p. ej. `call_aws sts get-caller-identity`).
+- [x] Captura de Cursor mostrando el servidor AWS MCP conectado (`docs/proof/cursor-aws-mcp-connected.webp`).
+- [x] Captura de sus ocho herramientas y del agente llamando `aws__run_script` → `sts:GetCallerIdentity` (`docs/proof/cursor-aws-mcp-tools.webp`, `docs/proof/cursor-agent-get-caller-identity.webp`).
 - [ ] Captura del agente ejecutando el deploy o las verificaciones de la stack (CloudFormation `describe-stacks`, `lambda invoke` de ingest, lectura de logs) **a través del MCP**.
-- [ ] Evidencia de CloudTrail (§3) con eventos del AWS MCP Server de la misma cuenta y fecha.
-- [ ] `docs/proof/` en el repo con las capturas (sin account IDs completos: enmascarar los últimos 8 dígitos si se prefiere).
+- [x] Evidencia de CloudTrail (§3) con `CallReadWriteTool` y la llamada reenviada a STS, misma cuenta, fecha y `requestId` (`docs/proof/cloudtrail-mcp-2026-09-28.json`).
+- [x] `docs/proof/` en el repo con capturas y JSON; el account ID está enmascarado como `5290XXXXXXXX`.
 - [ ] Un párrafo en el post: "Qué hizo el agente vs qué hice yo".
 
 ## 3. Cómo obtener la prueba en CloudTrail
-> Estado: **parcialmente verificado** (RESEARCH.md §6). La documentación de AWS confirma que el MCP añade `aws:ViaAWSMCPService` y `aws:CalledViaAWSMCP=aws-mcp.amazonaws.com` a las llamadas reenviadas. Artículos de Builder Center muestran eventos `eventSource: aws-mcp.us-east-1.api.aws`, `eventName: CallTool` y `eventCategory: Data`. **Hay que comprobarlo en la cuenta el día 0.**
+> Estado: **verificado el 28-sep-2026** para esta cuenta. CloudTrail registró
+> `eventSource: aws-mcp.amazonaws.com`, `eventName: CallReadWriteTool`,
+> `eventType: AwsMcpEvent` y `eventCategory: Management`. El evento incluye la llamada
+> reenviada `sts:GetCallerIdentity`; el evento STS correspondiente tiene
+> `invokedBy: aws-mcp.amazonaws.com`. Evidencia en `docs/proof/`.
 
 1. **Llamadas reenviadas a servicios** (eventos de management, visibles en Event history 90 días):
    ```bash
