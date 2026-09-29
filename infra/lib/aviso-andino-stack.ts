@@ -62,6 +62,20 @@ export class AvisoAndinoStack extends Stack {
     const scheduleEnabled = scheduleEnabledContext === true || scheduleEnabledContext === 'true';
     const smsInfraContext = this.node.tryGetContext('smsInfra');
     const smsInfra = smsInfraContext === true || smsInfraContext === 'true';
+    // Por defecto NO crea bucket/CloudFront propios: el frontend vive en AvisoAndino-web-<stage>
+    // (una sola URL pública que enruta /api/* a este HttpApi). `-c webDist=true` los recrea (legado).
+    // `-c publicBaseUrl=https://...` fija la URL pública para los enlaces de los mensajes.
+    const webDistContext = this.node.tryGetContext('webDist');
+    const webDistribution = webDistContext === true || webDistContext === 'true';
+    const publicBaseUrlContext = this.node.tryGetContext('publicBaseUrl') as string | undefined;
+    // Concurrencia reservada del sender solo si se pide (`-c senderReservedConcurrency=2`): cuentas nuevas
+    // tienen un límite de 10 y AWS exige dejar al menos 10 sin reservar.
+    const senderConcurrencyContext = this.node.tryGetContext('senderReservedConcurrency') as string | number | undefined;
+    const senderReservedConcurrency =
+      senderConcurrencyContext === undefined || senderConcurrencyContext === '' ? undefined : Number(senderConcurrencyContext);
+    if (senderReservedConcurrency !== undefined && (!Number.isInteger(senderReservedConcurrency) || senderReservedConcurrency < 1)) {
+      throw new Error(`senderReservedConcurrency inválido: ${String(senderConcurrencyContext)}`);
+    }
     const removalPolicy = isDev ? RemovalPolicy.DESTROY : RemovalPolicy.RETAIN;
     const root = fileURLToPath(new URL('../..', import.meta.url));
     const lockFile = path.join(root, 'pnpm-lock.yaml');
@@ -147,12 +161,16 @@ export class AvisoAndinoStack extends Stack {
       removalPolicy,
       lifecycleRules: [{ id: 'expire-live-snapshots', prefix: 'snapshots/', expiration: Duration.days(30) }],
     });
-    const webBucket = new s3.Bucket(this, 'WebBucket', {
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      encryption: s3.BucketEncryption.S3_MANAGED,
-      enforceSSL: true,
-      removalPolicy,
-    });
+    const webBucket = webDistribution
+      ? new s3.Bucket(this, 'WebBucket', {
+        blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+        encryption: s3.BucketEncryption.S3_MANAGED,
+        enforceSSL: true,
+        removalPolicy,
+      })
+      : undefined;
+    const cleanedBuckets: Array<[s3.Bucket, string]> = [[snapshotsBucket, 'CleanSnapshotsOnDelete']];
+    if (webBucket) cleanedBuckets.push([webBucket, 'CleanWebOnDelete']);
 
     if (isDev) {
       const bucketCleaner = this.nodeFunction(
@@ -166,20 +184,17 @@ export class AvisoAndinoStack extends Stack {
       );
       bucketCleaner.addToRolePolicy(new iam.PolicyStatement({
         actions: ['s3:ListBucket'],
-        resources: [snapshotsBucket.bucketArn, webBucket.bucketArn],
+        resources: cleanedBuckets.map(([bucket]) => bucket.bucketArn),
       }));
       bucketCleaner.addToRolePolicy(new iam.PolicyStatement({
         actions: ['s3:DeleteObject', 's3:DeleteObjectVersion'],
-        resources: [snapshotsBucket.arnForObjects('*'), webBucket.arnForObjects('*')],
+        resources: cleanedBuckets.map(([bucket]) => bucket.arnForObjects('*')),
       }));
       bucketCleaner.addPermission('CloudFormationInvoke', {
         principal: new iam.ServicePrincipal('cloudformation.amazonaws.com'),
         sourceAccount: this.account,
       });
-      for (const [bucket, cleanId] of [
-        [snapshotsBucket, 'CleanSnapshotsOnDelete'],
-        [webBucket, 'CleanWebOnDelete'],
-      ] as const) {
+      for (const [bucket, cleanId] of cleanedBuckets) {
         new CustomResource(this, cleanId, {
           resourceType: 'Custom::ZtsEmptyBucket',
           serviceToken: bucketCleaner.functionArn,
@@ -243,7 +258,7 @@ export class AvisoAndinoStack extends Stack {
 
     const ingest = this.nodeFunction('Ingest', 'ingest', 512, 60, sharedEnvironment, root, lockFile);
     const matcher = this.nodeFunction('Matcher', 'matcher', 512, 60, sharedEnvironment, root, lockFile);
-    const sender = this.nodeFunction('Sender', 'sender', 256, 30, sharedEnvironment, root, lockFile, 2);
+    const sender = this.nodeFunction('Sender', 'sender', 256, 30, sharedEnvironment, root, lockFile, senderReservedConcurrency);
     const api = this.nodeFunction('Api', 'api', 256, 10, sharedEnvironment, root, lockFile);
     const smsEvents = smsInfra
       ? this.nodeFunction('SmsEvents', 'sms-events', 256, 10, sharedEnvironment, root, lockFile)
@@ -377,68 +392,72 @@ export class AvisoAndinoStack extends Stack {
       };
     }
 
-    const securityHeaders = new cloudfront.ResponseHeadersPolicy(this, 'SecurityHeaders', {
-      responseHeadersPolicyName: `${rolePrefix}-security`,
-      securityHeadersBehavior: {
-        contentTypeOptions: { override: true },
-        frameOptions: { frameOption: cloudfront.HeadersFrameOption.DENY, override: true },
-        referrerPolicy: {
-          referrerPolicy: cloudfront.HeadersReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN,
-          override: true,
+    let webUrl: string | undefined;
+    if (webBucket) {
+      const securityHeaders = new cloudfront.ResponseHeadersPolicy(this, 'SecurityHeaders', {
+        responseHeadersPolicyName: `${rolePrefix}-security`,
+        securityHeadersBehavior: {
+          contentTypeOptions: { override: true },
+          frameOptions: { frameOption: cloudfront.HeadersFrameOption.DENY, override: true },
+          referrerPolicy: {
+            referrerPolicy: cloudfront.HeadersReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN,
+            override: true,
+          },
+          strictTransportSecurity: {
+            accessControlMaxAge: Duration.days(365),
+            includeSubdomains: true,
+            preload: true,
+            override: true,
+          },
         },
-        strictTransportSecurity: {
-          accessControlMaxAge: Duration.days(365),
-          includeSubdomains: true,
-          preload: true,
-          override: true,
-        },
-      },
-    });
-    const distribution = new cloudfront.Distribution(this, 'WebDistribution', {
-      comment: `Aviso Andino ${props.stage}`,
-      defaultRootObject: 'index.html',
-      priceClass: cloudfront.PriceClass.PRICE_CLASS_100,
-      defaultBehavior: {
-        origin: origins.S3BucketOrigin.withOriginAccessControl(webBucket),
-        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-        responseHeadersPolicy: securityHeaders,
-      },
-      additionalBehaviors: {
-        '/api/*': {
-          origin: new origins.HttpOrigin(Fn.select(2, Fn.split('/', httpApi.apiEndpoint))),
-          allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
-          cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
-          originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
+      });
+      const distribution = new cloudfront.Distribution(this, 'WebDistribution', {
+        comment: `Aviso Andino ${props.stage}`,
+        defaultRootObject: 'index.html',
+        priceClass: cloudfront.PriceClass.PRICE_CLASS_100,
+        defaultBehavior: {
+          origin: origins.S3BucketOrigin.withOriginAccessControl(webBucket),
           viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
           responseHeadersPolicy: securityHeaders,
         },
-      },
-      errorResponses: [
-        { httpStatus: 403, responseHttpStatus: 200, responsePagePath: '/index.html' },
-        { httpStatus: 404, responseHttpStatus: 200, responsePagePath: '/index.html' },
-      ],
-    });
-    matcher.addEnvironment('PUBLIC_BASE_URL', `https://${distribution.distributionDomainName}`);
+        additionalBehaviors: {
+          '/api/*': {
+            origin: new origins.HttpOrigin(Fn.select(2, Fn.split('/', httpApi.apiEndpoint))),
+            allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
+            cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
+            originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
+            viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+            responseHeadersPolicy: securityHeaders,
+          },
+        },
+        errorResponses: [
+          { httpStatus: 403, responseHttpStatus: 200, responsePagePath: '/index.html' },
+          { httpStatus: 404, responseHttpStatus: 200, responsePagePath: '/index.html' },
+        ],
+      });
+      webUrl = `https://${distribution.distributionDomainName}`;
 
-    const webDist = path.join(root, 'apps/web/dist');
-    const deploymentRole = new iam.Role(this, 'WebDeploymentRole', {
-      roleName: `${rolePrefix}-web-deploy`,
-      assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
-      managedPolicies: [
-        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'),
-      ],
-    });
-    new s3deploy.BucketDeployment(this, 'DeployWeb', {
-      sources: existsSync(webDist)
-        ? [s3deploy.Source.asset(webDist)]
-        : [s3deploy.Source.data('index.html', this.placeholderHtml())],
-      destinationBucket: webBucket,
-      distribution,
-      distributionPaths: ['/*'],
-      prune: true,
-      retainOnDelete: !isDev,
-      role: deploymentRole,
-    });
+      const webDist = path.join(root, 'apps/web/dist');
+      const deploymentRole = new iam.Role(this, 'WebDeploymentRole', {
+        roleName: `${rolePrefix}-web-deploy`,
+        assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
+        managedPolicies: [
+          iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'),
+        ],
+      });
+      new s3deploy.BucketDeployment(this, 'DeployWeb', {
+        sources: existsSync(webDist)
+          ? [s3deploy.Source.asset(webDist)]
+          : [s3deploy.Source.data('index.html', this.placeholderHtml())],
+        destinationBucket: webBucket,
+        distribution,
+        distributionPaths: ['/*'],
+        prune: true,
+        retainOnDelete: !isDev,
+        role: deploymentRole,
+      });
+    }
+    matcher.addEnvironment('PUBLIC_BASE_URL', webUrl ?? publicBaseUrlContext ?? '');
 
     const parameters: Record<string, string> = {
       SMS_ENABLED: 'false',
@@ -486,7 +505,8 @@ export class AvisoAndinoStack extends Stack {
     });
 
     new CfnOutput(this, 'Stage', { value: props.stage });
-    new CfnOutput(this, 'WebUrl', { value: `https://${distribution.distributionDomainName}` });
+    if (webUrl) new CfnOutput(this, 'WebUrl', { value: webUrl });
+    new CfnOutput(this, 'ApiDomain', { value: Fn.select(2, Fn.split('/', httpApi.apiEndpoint)) });
     new CfnOutput(this, 'ApiUrl', { value: httpApi.apiEndpoint });
     new CfnOutput(this, 'SubscribersTableName', { value: subscribers.tableName });
     new CfnOutput(this, 'WarningsTableName', { value: warnings.tableName });
